@@ -7,7 +7,7 @@
     {
       "name": "sanity",
       "source": "./",
-      "description": "Stop hook that gatekeeps every assistant reply on style and cognitive load, with a regex-first / Haiku-fallback check."
+      "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load, with a regex-first / Haiku-fallback check."
     }
   ]
 }
