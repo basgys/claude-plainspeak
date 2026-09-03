@@ -119,7 +119,7 @@ AXIS 2 — STYLE: mechanical AI-writing tells (paraphrases count).
 
 AXIS 3 — COGNITIVE_LOAD: same six general principles as any text, applied here.
 1. Point first: the main point comes before the reasoning or elaboration that led to it.
-2. Context before ask: if the text needs something from the reader, the situation motivating that ask comes first, never after.
+2. Context before ask: if the text needs something from the reader, the situation motivating that ask comes first, never after; and a genuine question (not rhetorical) comes with a recommended option plus one brief reason, not left fully open for the reader to do the deciding work alone.
 3. Clean structure: groupings/lists are genuinely distinct (no overlap) and complete (no obvious gap), not padded to hit a count.
 4. Only what's needed: no restating what's already visible elsewhere in the text, no caveat that doesn't follow from something specific already stated, no elaboration beyond what was asked for.
 5. Respect working-memory limits: sentences and lists short enough to hold in the head at once.
