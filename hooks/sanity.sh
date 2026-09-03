@@ -107,7 +107,22 @@ HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuan
 # not "this word exists". Requires >=2 total hits to flag.
 SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|groundbreaking|game.?changer|cutting.?edge|paradigm shift|holistic approach|synergy|underscores?|exemplifies|nestled|in the heart of)\b'
 
-PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b'
+PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b|(^|[.!?] )rather, (it|this|that|they|the)\b|\bno [a-z]+, no [a-z]+, just\b'
+
+# Negative parallelism, the trailing-appositive form: state the thing, then
+# negate an alternative nobody proposed ("it samples the container's cgroup
+# limits rather than the node's", "queued, waiting for a slot, not executing
+# slowly", "the pool belongs to the instance, not to a connection"). The
+# negation carries no information; it doubles the length and reads as
+# hedging. Wikipedia lists this as three subtypes — "not just X but Y",
+# "not X, but Y", "X rather than Y" — of which PHRASE_PATTERN above only
+# catches the two that end in "but".
+#
+# Counted rather than hard-blocked: a single one is sometimes a real
+# contrast against something the reader actually believes ("it's a warning,
+# not an error"), which regex can't tell apart from the tic. Two or more in
+# one message is the verbal habit, and Haiku (stage 2) judges the singles.
+NEG_PARALLEL_PATTERN='(,|—|;) *not +(just |only |merely |simply )?[a-z0-9"]|\brather than\b|\bnot +(a|an|the|to|because|from) [a-z]+,? but\b'
 
 # Nominalization ("the implementation of" vs "implementing") is judged by
 # Haiku (stage 2) only, not regexed here: testing found "the X of" false-
@@ -129,6 +144,13 @@ fi
 
 if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
   hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
+fi
+
+neg_all=$(grep -oiE "$NEG_PARALLEL_PATTERN" <<<"$checktext" 2>/dev/null)
+neg_count=$(wc -l <<<"$neg_all" | tr -d ' ')
+[ -z "$neg_all" ] && neg_count=0
+if [ "$neg_count" -ge 2 ]; then
+  hits="${hits:+$hits; }negative parallelism x$neg_count (stating what is NOT the case right after stating what is — 'X, not Y' / 'X rather than Y'; the negation adds nothing, cut it)"
 fi
 
 emdash_count=$(grep -o '—' <<<"$checktext" 2>/dev/null | wc -l | tr -d ' ')
@@ -169,7 +191,13 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Filler/hedging, banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
 - Rule-of-three lists used as filler, hollow significance framing ('X reflects/underscores a deeper Y')
 - Throat-clearing before the answer
-- Negated-strawman parallelism ('It's not X, it's Y' where nobody claimed X — a REAL strawman being knocked down for rhetorical effect). Do NOT flag a direct 'No,'/'Yes,' answer to a yes/no question followed by a brief gloss (e.g. 'No, not automatically — it runs on save.') — that is just answering the question, not a rhetorical negation.
+- NEGATIVE PARALLELISM — the single highest-priority tell here, flag it even once. The writer states what IS the case and then negates an alternative nobody raised. All of these forms count:
+  * 'It's not X, it's Y' / 'not just X, but Y' (the classic strawman)
+  * trailing appositive: 'it belongs to the instance, not to a connection', 'queued, waiting for a slot, not executing slowly', 'reporting only, not the tuner'
+  * 'rather than' / 'instead of': 'it samples the container's cgroup limits rather than the node's'
+  The test: delete the negated half. If the sentence still says everything the reader needed, the negation was zero-information padding and IS a violation — prefer the sentence with it cut ('it samples the container's cgroup limits'). Do not accept it because it 'adds precision': stating what you are doing already excludes what you are not doing.
+  Only genuine correction survives: the negated alternative is one the reader actually expects or has just asserted, and naming it resolves a live confusion (e.g. 'that's a warning, not an error' when they read it as a failure). Absent that, flag it.
+- Do NOT flag a direct 'No,'/'Yes,' answer to a yes/no question followed by a brief gloss (e.g. 'No, not automatically — it runs on save.') — that is answering the question.
 - Copula avoidance ('serves as' instead of 'is')
 - Hidden-verb nominalization ('the implementation of X' instead of 'implementing X') — only when a plain verb genuinely reads better; do NOT flag ordinary concrete nouns like 'the configuration of the load balancer', where the noun names a real thing, not a disguised action
 
