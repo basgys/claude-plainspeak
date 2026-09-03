@@ -1,0 +1,17 @@
+{
+  "name": "sanity",
+  "description": "Stop hook that gatekeeps every assistant reply on two axes — writing style (AI-vocab, templated phrasing) and cognitive load (buried lede, fake due diligence, unearned caveats) — via free regex first, a stateless Haiku classifier fallback second.",
+  "version": "1.0.0",
+  "author": {
+    "name": "basgys"
+  },
+  "homepage": "https://github.com/basgys/claude-sanity",
+  "repository": "https://github.com/basgys/claude-sanity",
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "writing-style",
+    "cognitive-load",
+    "linter"
+  ]
+}
