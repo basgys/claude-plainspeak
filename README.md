@@ -22,8 +22,8 @@ Rules are grounded in a CLAUDE.md-style writing-rules doc and evidence-based com
 As a plugin (recommended):
 
 ```
-/plugin marketplace add basgys/claude-sanity
-/plugin install nospin@claude-sanity
+/plugin marketplace add basgys/claude-nospin
+/plugin install nospin@claude-nospin
 ```
 
 Or manually: copy both scripts under `hooks/` to `~/.claude/hooks/`, `chmod +x` them, and merge this into `~/.claude/settings.json`:
