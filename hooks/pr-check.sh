@@ -117,12 +117,13 @@ AXIS 2 — STYLE: mechanical AI-writing tells (paraphrases count).
 - Banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
 - Rule-of-three filler, hollow significance framing, throat-clearing, negated-strawman parallelism, copula avoidance
 
-AXIS 3 — COGNITIVE_LOAD: a teammate reading this later needs the point fast.
-- Buried lede: the actual reason for the change isn't near the top
-- Non-MECE grouping: sections/bullets that overlap with each other or leave an obvious gap
-- Fake due diligence: caveats/tradeoffs that don't follow from anything specific in this PR
-- Exhaustive narrative in place of a clear, direct explanation
-- Redundancy: prose that re-describes a diff/change already visible in the code itself
+AXIS 3 — COGNITIVE_LOAD: same six general principles as any text, applied here.
+1. Point first: the main point comes before the reasoning or elaboration that led to it.
+2. Context before ask: if the text needs something from the reader, the situation motivating that ask comes first, never after.
+3. Clean structure: groupings/lists are genuinely distinct (no overlap) and complete (no obvious gap), not padded to hit a count.
+4. Only what's needed: no restating what's already visible elsewhere in the text, no caveat that doesn't follow from something specific already stated, no elaboration beyond what was asked for.
+5. Respect working-memory limits: sentences and lists short enough to hold in the head at once.
+6. Unambiguous terminal state: if the text signals it is ending or concluding, that state is one of a small, plainly-stated set (e.g. done; blocked, needs X) — not hedged or left to be inferred. This checks clarity of what's said, not whether it's true.
 
 Never flag: code blocks, inline code, file paths, commands, error strings, identifiers, numbers.
 

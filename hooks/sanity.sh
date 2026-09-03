@@ -152,16 +152,13 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Throat-clearing before the answer, negated-strawman parallelism ('not X, it is Y' where nobody claimed X)
 - Copula avoidance ('serves as' instead of 'is')
 
-AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect.
-- Buried lede: the actual finding or decision is not the first sentence
-- Ask-before-context: a request, question, or call to action appears before the situation/context that motivates it
-- Ambiguous outcome signaling: when reporting stopped/finished/blocked/needs-clarification, that status is not stated plainly and immediately
-- Non-MECE grouping: a list or set of categories has items that overlap with each other, or leaves an obvious gap
-- Fake due diligence: a caveat, tradeoff, or comparison that does not follow from anything specific already stated in THIS text — the kind of hedge that could be pasted into any answer regardless of topic
-- Exhaustive tradeoff narrative in place of a decision plus one brief reason
-- Formulaic closing that lists strengths then pivots to challenges/future work ('Despite its X, it faces Y... future improvements could address this') when nobody asked for a balanced retrospective
-- Redundancy: prose that re-describes information already fully given elsewhere in the same message (e.g. narrating a code diff in words when the diff is right there)
-- Any other sentence structure that makes the reader work harder than the content requires
+AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, applicable to any text:
+1. Point first: the main point (answer, finding, conclusion — whatever it is) comes before the reasoning or elaboration that led to it.
+2. Context before ask: if the text needs something from the reader, the situation motivating that ask comes first, never after.
+3. Clean structure: groupings/lists are genuinely distinct (no overlap) and complete (no obvious gap), not padded to hit a count.
+4. Only what's needed: no restating what's already visible elsewhere in the text, no caveat that doesn't follow from something specific already stated, no elaboration beyond what was asked for.
+5. Respect working-memory limits: sentences and lists short enough to hold in the head at once.
+6. Unambiguous terminal state: if the text signals it is ending or concluding, that state is one of a small, plainly-stated set (e.g. done; blocked, needs X) — not hedged or left to be inferred. This checks clarity of what's said, not whether it's true.
 
 Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code blocks and blockquote lines have already been stripped from the text below; if what remains still reads like a pasted excerpt, don't flag it either.
 Do NOT flag: plain technical writing, terse fragments, legitimate lists of genuinely distinct facts, normal use of 'and'/'but'. A word from the checklist below used ONCE, in an ordinary sentence, is not a violation by itself — the tell is the word recurring or the sentence being built around it, not its mere presence.
