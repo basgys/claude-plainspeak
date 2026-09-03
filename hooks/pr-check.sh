@@ -99,7 +99,7 @@ fi
 # see sanity.sh's header comment for citations. Kept out of the prompt
 # itself: it runs on every invocation, and the model needs the operational
 # rule, not the citation.
-verdict=$(claude --restricted --model haiku -p "Judge this GitHub PR description body against THREE independent axes. Report all three, even if some are clean.
+verdict=$(claude --restricted --model haiku --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "Judge this GitHub PR description body against THREE independent axes. Report all three, even if some are clean.
 
 AXIS 1 — PR_STRUCTURE: this is a permanent record of why the change exists, not a changelog of what changed.
 - Must be prose, not a bullet-point list (a short bulleted 'Why' section area is fine if the surrounding text is prose; a body that's ALL bullets is a violation)

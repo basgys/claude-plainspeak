@@ -151,7 +151,7 @@ fi
 
 # --- Stage 2: structural check via Haiku, only when stage 1 passed ----
 
-verdict=$(claude --restricted --model haiku -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
+verdict=$(claude --restricted --model haiku --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
 
 AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact wording).
 - Filler/hedging, banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
