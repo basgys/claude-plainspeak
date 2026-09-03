@@ -79,6 +79,12 @@ SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|grou
 
 PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b'
 
+# Federal Plain Language Guidelines' "hidden verb" nominalization: "the
+# implementation of" instead of "implementing". Narrow "the ___ of" shape
+# keeps false positives low (skips normal technical nouns like
+# "configuration file", which don't take this construction).
+NOMINALIZATION_PATTERN='\bthe [a-z]+(ment|tion|sion|ance) of\b'
+
 hits=""
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$checktext" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
 [ -n "$hard_m" ] && hits="banned words: $hard_m"
@@ -95,10 +101,28 @@ if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
   hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
 fi
 
+if grep -qiE "$NOMINALIZATION_PATTERN" <<<"$checktext"; then
+  hits="${hits:+$hits; }hidden-verb nominalization ('the X of' instead of a plain verb — Federal Plain Language Guidelines)"
+fi
+
 emdash_count=$(grep -o '—' <<<"$checktext" 2>/dev/null | wc -l | tr -d ' ')
 [ -z "$emdash_count" ] && emdash_count=0
 if [ "$emdash_count" -ge 3 ]; then
   hits="${hits:+$hits; }em dash overused ($emdash_count occurrences)"
+fi
+
+# Federal Plain Language ceiling: ~40 words/sentence. Sentence-split on
+# ./!/? followed by whitespace; longest sentence wins.
+longest_sentence=$(awk 'BEGIN{RS="[.!?]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$checktext")
+if [ "$longest_sentence" -gt 40 ]; then
+  hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
+fi
+
+# Cowan (2001): working memory holds ~4 chunks. A long flat, unstructured
+# list (no sub-grouping) is a comfortable-limit violation past ~6 items.
+max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$checktext")
+if [ "$max_bullets" -gt 6 ]; then
+  hits="${hits:+$hits; }flat list too long ($max_bullets items, working-memory comfortable limit is ~4-5 — Cowan 2001)"
 fi
 
 if [ -n "$hits" ]; then
@@ -115,12 +139,15 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Throat-clearing before the answer, negated-strawman parallelism ('not X, it is Y' where nobody claimed X)
 - Copula avoidance ('serves as' instead of 'is')
 
-AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource, independent of whether the text sounds AI-generated. Every sentence that costs extra parsing effort without adding real information is a defect.
-- Buried lede: the actual finding or decision is not the first sentence
+AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource, independent of whether the text sounds AI-generated. Every sentence that costs extra parsing effort without adding real information is a defect. These criteria are grounded in evidence-based communication protocols (BLUF, SBAR, the Minto Pyramid Principle, Cowan 2001 on working memory, Federal Plain Language Guidelines) — this is not house style, it's what independently-converged research says reduces reading/comprehension effort.
+- Buried lede: the actual finding or decision is not the first sentence (BLUF/SBAR/Minto/inverted-pyramid all converge on this)
+- Ask-before-context: a request, question, or call to action appears before the situation/context that motivates it (SBAR: Situation and Background must precede the Recommendation)
 - Ambiguous outcome signaling: when reporting stopped/finished/blocked/needs-clarification, that status is not stated plainly and immediately
+- Non-MECE grouping: a list or set of categories has items that overlap with each other, or leaves an obvious gap (Minto's MECE test)
 - Fake due diligence: a caveat, tradeoff, or comparison that does not follow from anything specific already stated in THIS text — the kind of hedge that could be pasted into any answer regardless of topic
 - Exhaustive tradeoff narrative in place of a decision plus one brief reason
 - Formulaic closing that lists strengths then pivots to challenges/future work ('Despite its X, it faces Y... future improvements could address this') when nobody asked for a balanced retrospective
+- Redundancy effect (Sweller): prose that re-describes information already fully given elsewhere in the same message (e.g. narrating a code diff in words when the diff is right there)
 - Any other sentence structure that makes the reader work harder than the content requires
 
 Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code blocks and blockquote lines have already been stripped from the text below; if what remains still reads like a pasted excerpt, don't flag it either.

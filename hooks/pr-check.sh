@@ -62,6 +62,8 @@ block() {
 
 HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuanced|tapestry|leverage|utilize|robust|innovative|streamline|great question|good point|absolutely|certainly|of course|awesome|honestly|to be clear|fair point|fair pushback|I should note|it.s worth noting)\b'
 SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|groundbreaking|game.?changer|cutting.?edge|paradigm shift|holistic approach|synergy|underscores?|exemplifies|nestled|in the heart of)\b'
+# Federal Plain Language Guidelines' "hidden verb" nominalization.
+NOMINALIZATION_PATTERN='\bthe [a-z]+(ment|tion|sion|ance) of\b'
 
 hits=""
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$body" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
@@ -73,6 +75,20 @@ soft_count=$(wc -l <<<"$soft_all" | tr -d ' ')
 if [ "$soft_count" -ge 2 ]; then
   soft_m=$(sort -u <<<"$soft_all" | paste -sd, -)
   hits="${hits:+$hits; }repeated AI-vocab ($soft_count occurrences: $soft_m)"
+fi
+
+if grep -qiE "$NOMINALIZATION_PATTERN" <<<"$body"; then
+  hits="${hits:+$hits; }hidden-verb nominalization ('the X of' instead of a plain verb)"
+fi
+
+longest_sentence=$(awk 'BEGIN{RS="[.!?]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$body")
+if [ "$longest_sentence" -gt 40 ]; then
+  hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
+fi
+
+max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$body")
+if [ "$max_bullets" -gt 6 ]; then
+  hits="${hits:+$hits; }flat list too long ($max_bullets items, working-memory comfortable limit is ~4-5 — Cowan 2001)"
 fi
 
 if [ -n "$hits" ]; then
@@ -96,10 +112,12 @@ AXIS 2 — STYLE: mechanical AI-writing tells (paraphrases count).
 - Banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
 - Rule-of-three filler, hollow significance framing, throat-clearing, negated-strawman parallelism, copula avoidance
 
-AXIS 3 — COGNITIVE_LOAD: a teammate reading this later needs the point fast.
+AXIS 3 — COGNITIVE_LOAD: a teammate reading this later needs the point fast. Grounded in evidence-based communication protocols (BLUF, SBAR, Minto Pyramid Principle) — not house style.
 - Buried lede: the actual reason for the change isn't near the top
+- Non-MECE grouping: sections/bullets that overlap with each other or leave an obvious gap
 - Fake due diligence: caveats/tradeoffs that don't follow from anything specific in this PR
 - Exhaustive narrative in place of a clear, direct explanation
+- Redundancy effect: prose that re-describes a diff/change already visible in the code itself
 
 Never flag: code blocks, inline code, file paths, commands, error strings, identifiers, numbers.
 
