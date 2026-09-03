@@ -16,17 +16,44 @@
 # catching what regex misses.
 set -uo pipefail
 
-input=$(cat)
+MAX_ATTEMPTS=3
 
-if [ "$(jq -r '.stop_hook_active // false' <<<"$input")" = "true" ]; then
-  exit 0
-fi
+input=$(cat)
+session_id=$(jq -r '.session_id // "unknown"' <<<"$input")
+counter_file="/tmp/.claude-sanity-attempts-${session_id}"
+
+attempt=0
+[ -f "$counter_file" ] && attempt=$(cat "$counter_file" 2>/dev/null || echo 0)
+[ -z "$attempt" ] && attempt=0
 
 msg=$(jq -r '.last_assistant_message // empty' <<<"$input")
 [ -z "$msg" ] && exit 0
 
+# A prior attempt already maxed out and gave up — don't re-enter.
+if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+  rm -f "$counter_file"
+  exit 0
+fi
+
 block() {
-  jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"Stop",decision:"block",reason:$r}}'
+  attempt=$((attempt + 1))
+  echo "$attempt" > "$counter_file"
+  if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+    jq -n --arg r "$1" --arg m "Sanity check: gave up after $MAX_ATTEMPTS correction attempts, letting it through as-is ($1)" \
+      '{systemMessage: $m}'
+    rm -f "$counter_file"
+    exit 0
+  fi
+  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" --arg m "Sanity check: rewriting (attempt $attempt/$MAX_ATTEMPTS) — $1" \
+    '{systemMessage: $m, hookSpecificOutput:{hookEventName:"Stop",decision:"block",reason:$r}}'
+  exit 0
+}
+
+pass() {
+  if [ "$attempt" -gt 0 ]; then
+    jq -n --arg m "Sanity check: passed after $attempt correction(s)." '{systemMessage: $m}'
+  fi
+  rm -f "$counter_file"
   exit 0
 }
 
@@ -135,6 +162,8 @@ fi
 
 if [ -n "$notes" ]; then
   jq -n --arg m "Style note (not blocking) [$notes]" '{systemMessage: $m}'
+  rm -f "$counter_file"
+  exit 0
 fi
 
-exit 0
+pass
