@@ -97,6 +97,11 @@ fi
 
 # --- Stage 2: PR-structure + style/cognitive-load check via Haiku -----
 
+# COGNITIVE_LOAD axis rules are grounded in evidence-based communication
+# protocols (BLUF, SBAR, Minto Pyramid Principle) rather than house style —
+# see sanity.sh's header comment for citations. Kept out of the prompt
+# itself: it runs on every invocation, and the model needs the operational
+# rule, not the citation.
 verdict=$(claude --restricted --model haiku -p "Judge this GitHub PR description body against THREE independent axes. Report all three, even if some are clean.
 
 AXIS 1 — PR_STRUCTURE: this is a permanent record of why the change exists, not a changelog of what changed.
@@ -112,12 +117,12 @@ AXIS 2 — STYLE: mechanical AI-writing tells (paraphrases count).
 - Banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
 - Rule-of-three filler, hollow significance framing, throat-clearing, negated-strawman parallelism, copula avoidance
 
-AXIS 3 — COGNITIVE_LOAD: a teammate reading this later needs the point fast. Grounded in evidence-based communication protocols (BLUF, SBAR, Minto Pyramid Principle) — not house style.
+AXIS 3 — COGNITIVE_LOAD: a teammate reading this later needs the point fast.
 - Buried lede: the actual reason for the change isn't near the top
 - Non-MECE grouping: sections/bullets that overlap with each other or leave an obvious gap
 - Fake due diligence: caveats/tradeoffs that don't follow from anything specific in this PR
 - Exhaustive narrative in place of a clear, direct explanation
-- Redundancy effect: prose that re-describes a diff/change already visible in the code itself
+- Redundancy: prose that re-describes a diff/change already visible in the code itself
 
 Never flag: code blocks, inline code, file paths, commands, error strings, identifiers, numbers.
 

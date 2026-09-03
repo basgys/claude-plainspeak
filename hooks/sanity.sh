@@ -14,6 +14,19 @@
 # three, hollow significance framing, throat-clearing, copula avoidance,
 # paraphrased negative-parallelism). Keeps the common case free while still
 # catching what regex misses.
+#
+# The COGNITIVE_LOAD rubric (both stages) is grounded in evidence-based
+# communication research rather than ad-hoc judgment: BLUF/SBAR/Minto/
+# inverted-pyramid all independently converge on "conclusion first"
+# (buried-lede rule); SBAR's fixed slot order motivates the ask-before-
+# context rule; Minto's MECE test motivates the grouping rule; Cowan
+# (2001), "The magical number 4 in short-term memory" motivates the flat-
+# list length ceiling; the Federal Plain Language Guidelines (Plain
+# Writing Act of 2010) motivate the sentence-length ceiling and
+# nominalization check; Sweller's redundancy effect motivates the
+# redundancy rule. Citations are kept out of the runtime prompt itself —
+# it's sent on every invocation, and the model needs the operational rule,
+# not the citation.
 set -uo pipefail
 
 MAX_ATTEMPTS=3
@@ -139,15 +152,15 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Throat-clearing before the answer, negated-strawman parallelism ('not X, it is Y' where nobody claimed X)
 - Copula avoidance ('serves as' instead of 'is')
 
-AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource, independent of whether the text sounds AI-generated. Every sentence that costs extra parsing effort without adding real information is a defect. These criteria are grounded in evidence-based communication protocols (BLUF, SBAR, the Minto Pyramid Principle, Cowan 2001 on working memory, Federal Plain Language Guidelines) — this is not house style, it's what independently-converged research says reduces reading/comprehension effort.
-- Buried lede: the actual finding or decision is not the first sentence (BLUF/SBAR/Minto/inverted-pyramid all converge on this)
-- Ask-before-context: a request, question, or call to action appears before the situation/context that motivates it (SBAR: Situation and Background must precede the Recommendation)
+AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect.
+- Buried lede: the actual finding or decision is not the first sentence
+- Ask-before-context: a request, question, or call to action appears before the situation/context that motivates it
 - Ambiguous outcome signaling: when reporting stopped/finished/blocked/needs-clarification, that status is not stated plainly and immediately
-- Non-MECE grouping: a list or set of categories has items that overlap with each other, or leaves an obvious gap (Minto's MECE test)
+- Non-MECE grouping: a list or set of categories has items that overlap with each other, or leaves an obvious gap
 - Fake due diligence: a caveat, tradeoff, or comparison that does not follow from anything specific already stated in THIS text — the kind of hedge that could be pasted into any answer regardless of topic
 - Exhaustive tradeoff narrative in place of a decision plus one brief reason
 - Formulaic closing that lists strengths then pivots to challenges/future work ('Despite its X, it faces Y... future improvements could address this') when nobody asked for a balanced retrospective
-- Redundancy effect (Sweller): prose that re-describes information already fully given elsewhere in the same message (e.g. narrating a code diff in words when the diff is right there)
+- Redundancy: prose that re-describes information already fully given elsewhere in the same message (e.g. narrating a code diff in words when the diff is right there)
 - Any other sentence structure that makes the reader work harder than the content requires
 
 Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code blocks and blockquote lines have already been stripped from the text below; if what remains still reads like a pasted excerpt, don't flag it either.
