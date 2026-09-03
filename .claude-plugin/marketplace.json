@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "sanity",
+      "name": "nospin",
       "source": "./",
       "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load, with a regex-first / Haiku-fallback check."
     }
