@@ -152,13 +152,13 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Throat-clearing before the answer, negated-strawman parallelism ('not X, it is Y' where nobody claimed X)
 - Copula avoidance ('serves as' instead of 'is')
 
-AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, applicable to any text:
-1. Point first: the main point (answer, finding, conclusion — whatever it is) comes before the reasoning or elaboration that led to it.
-2. Context before ask: if the text needs something from the reader, the situation motivating that ask comes first, never after; and a genuine question (not rhetorical) comes with a recommended option plus one brief reason, not left fully open for the reader to do the deciding work alone.
-3. Clean structure: groupings/lists are genuinely distinct (no overlap) and complete (no obvious gap), not padded to hit a count.
-4. Only what's needed: no restating what's already visible elsewhere in the text, no caveat that doesn't follow from something specific already stated, no elaboration beyond what was asked for.
-5. Respect working-memory limits: sentences and lists short enough to hold in the head at once.
-6. Unambiguous terminal state: if the text signals it is ending or concluding, that state is one of a small, plainly-stated set (e.g. done; blocked, needs X) — not hedged or left to be inferred. This checks clarity of what's said, not whether it's true.
+AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, each stated as prefer/avoid so the target behavior is explicit, not just the prohibition:
+1. Point first. Prefer: open with the main point (answer, finding, conclusion). Avoid: reasoning or elaboration before it.
+2. Context before ask. Prefer: state the situation, then the ask; for a genuine question, offer a recommended option with one brief reason. Avoid: asking before context, or leaving a real question fully open for the reader to decide alone.
+3. Clean structure. Prefer: groupings/lists that are genuinely distinct and complete. Avoid: overlapping or gap-leaving categories, or padding a list to hit a count.
+4. Say only what's warranted. Two root causes when this fails: sycophancy (manufacturing agreeable-sounding content to match perceived expectations rather than what the situation actually supports) and verbosity/length bias (padding output because length itself got learned as a proxy for perceived thoroughness, independent of whether it adds information). Prefer: state what's actually true or needed here, then stop. Avoid: restating what's already visible elsewhere in the text, inventing a caveat/tradeoff just to look thorough, or elaborating past what was asked.
+5. Respect working-memory limits. Prefer: sentences and lists short enough to hold in the head at once. Avoid: long unbroken sentences or long flat lists.
+6. Unambiguous terminal state. Prefer: end by naming one of a small set of plain states (e.g. done; blocked, needs X). Avoid: hedging or trailing off so the ending must be inferred. This checks clarity of what's said, not whether it's true.
 
 Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code blocks and blockquote lines have already been stripped from the text below; if what remains still reads like a pasted excerpt, don't flag it either.
 Do NOT flag: plain technical writing, terse fragments, legitimate lists of genuinely distinct facts, normal use of 'and'/'but'. A word from the checklist below used ONCE, in an ordinary sentence, is not a violation by itself — the tell is the word recurring or the sentence being built around it, not its mere presence.
