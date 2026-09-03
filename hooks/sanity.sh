@@ -35,8 +35,17 @@ input=$(cat)
 session_id=$(jq -r '.session_id // "unknown"' <<<"$input")
 counter_file="/tmp/.claude-sanity-attempts-${session_id}"
 
+# stop_hook_active is false on the first Stop of a turn and true only when
+# Claude is continuing because this hook blocked. Stop hooks don't fire on
+# user interrupts, so a rewrite cut short by Escape never reaches pass()
+# and leaves a counter behind — it must not carry into the next turn.
+stop_hook_active=$(jq -r '.stop_hook_active // false' <<<"$input")
 attempt=0
-[ -f "$counter_file" ] && attempt=$(cat "$counter_file" 2>/dev/null || echo 0)
+if [ "$stop_hook_active" = "true" ] && [ -f "$counter_file" ]; then
+  attempt=$(cat "$counter_file" 2>/dev/null || echo 0)
+else
+  rm -f "$counter_file"
+fi
 [ -z "$attempt" ] && attempt=0
 
 msg=$(jq -r '.last_assistant_message // empty' <<<"$input")
@@ -57,8 +66,11 @@ block() {
     rm -f "$counter_file"
     exit 0
   fi
+  # Stop hooks only honor decision/reason at the TOP level of the output
+  # JSON. Nested under hookSpecificOutput they are silently ignored: the
+  # systemMessage still prints, but the reply goes through unchanged.
   jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" --arg m "Sanity check: rewriting (attempt $attempt/$MAX_ATTEMPTS) — $1" \
-    '{systemMessage: $m, hookSpecificOutput:{hookEventName:"Stop",decision:"block",reason:$r}}'
+    '{decision: "block", reason: $r, systemMessage: $m}'
   exit 0
 }
 
