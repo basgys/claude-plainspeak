@@ -62,8 +62,9 @@ block() {
 
 HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuanced|tapestry|leverage|utilize|robust|innovative|streamline|great question|good point|absolutely|certainly|of course|awesome|honestly|to be clear|fair point|fair pushback|I should note|it.s worth noting)\b'
 SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|groundbreaking|game.?changer|cutting.?edge|paradigm shift|holistic approach|synergy|underscores?|exemplifies|nestled|in the heart of)\b'
-# Federal Plain Language Guidelines' "hidden verb" nominalization.
-NOMINALIZATION_PATTERN='\bthe [a-z]+(ment|tion|sion|ance) of\b'
+# Nominalization ("the implementation of") is judged by Haiku only, not
+# regexed — testing found "the X of" false-positives on ordinary technical
+# nouns (see sanity.sh for details).
 
 hits=""
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$body" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
@@ -77,18 +78,14 @@ if [ "$soft_count" -ge 2 ]; then
   hits="${hits:+$hits; }repeated AI-vocab ($soft_count occurrences: $soft_m)"
 fi
 
-if grep -qiE "$NOMINALIZATION_PATTERN" <<<"$body"; then
-  hits="${hits:+$hits; }hidden-verb nominalization ('the X of' instead of a plain verb)"
-fi
-
-longest_sentence=$(awk 'BEGIN{RS="[.!?]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$body")
+longest_sentence=$(awk 'BEGIN{RS="[.!?;]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$body")
 if [ "$longest_sentence" -gt 40 ]; then
   hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
 fi
 
 max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$body")
-if [ "$max_bullets" -gt 6 ]; then
-  hits="${hits:+$hits; }flat list too long ($max_bullets items, working-memory comfortable limit is ~4-5 — Cowan 2001)"
+if [ "$max_bullets" -gt 10 ]; then
+  hits="${hits:+$hits; }flat list too long ($max_bullets items — even for sequential reading, consider grouping)"
 fi
 
 if [ -n "$hits" ]; then
@@ -115,11 +112,13 @@ AXIS 1 — PR_STRUCTURE: this is a permanent record of why the change exists, no
 
 AXIS 2 — STYLE: mechanical AI-writing tells (paraphrases count).
 - Banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
-- Rule-of-three filler, hollow significance framing, throat-clearing, negated-strawman parallelism, copula avoidance
+- Rule-of-three filler, hollow significance framing, throat-clearing, copula avoidance
+- Negated-strawman parallelism ('It's not X, it's Y' where nobody claimed X — a REAL strawman knocked down for effect). Do NOT flag a direct 'No,'/'Yes,' answer to a yes/no question followed by a brief gloss.
+- Hidden-verb nominalization ('the implementation of X' instead of 'implementing X') — only when a plain verb genuinely reads better; do NOT flag ordinary concrete nouns like 'the configuration of the load balancer'
 
 AXIS 3 — COGNITIVE_LOAD: same six general principles as any text, applied here, each stated as prefer/avoid:
 1. Point first. Prefer: open with the main point. Avoid: reasoning or elaboration before it.
-2. Context before ask. Prefer: state the situation, then the ask; for a genuine question, offer a recommended option with one brief reason. Avoid: asking before context, or leaving a real question fully open.
+2. Context before ask. Prefer: state the situation, then the ask; for a genuine question offering a choice, ALWAYS include a recommended option with one brief reason. Avoid: asking before context, or a question presenting options with no stated recommendation.
 3. Clean structure. Prefer: groupings/lists that are genuinely distinct and complete. Avoid: overlapping or gap-leaving categories, or padding a list to hit a count.
 4. Say only what's warranted. Two root causes when this fails: sycophancy (manufacturing agreeable-sounding content to match perceived expectations rather than what the situation actually supports) and verbosity/length bias (padding output because length itself got learned as a proxy for perceived thoroughness, independent of whether it adds information). Prefer: state what's actually true or needed here, then stop. Avoid: restating what's already visible elsewhere, inventing a caveat/tradeoff just to look thorough, or elaborating past what was asked.
 5. Respect working-memory limits. Prefer: sentences and lists short enough to hold in the head at once. Avoid: long unbroken sentences or long flat lists.

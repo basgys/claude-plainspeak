@@ -70,12 +70,17 @@ pass() {
   exit 0
 }
 
-# Content the agent is quoting verbatim (fenced code, blockquotes) is never
-# ours to rewrite — strip it before either stage looks at the message.
+# Fenced code is never prose to be judged by writing rules — strip it.
+# Blockquotes are NOT stripped: testing found the exemption is purely
+# syntactic (matches a leading '>', not "is this actually someone else's
+# words"), so it was a full bypass — wrap anything in blockquote formatting
+# and both stages go blind to it. That happened non-adversarially too (an
+# assistant's own commentary trailing off inside blockquote formatting).
+# The cost of checking real quotes is low (quoted human/log text rarely
+# contains AI-writing tells); the cost of the bypass was high.
 checktext=$(awk '
   /^```/ { infence = !infence; next }
   infence { next }
-  /^[[:space:]]*>/ { next }
   { print }
 ' <<<"$msg")
 
@@ -92,11 +97,11 @@ SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|grou
 
 PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b'
 
-# Federal Plain Language Guidelines' "hidden verb" nominalization: "the
-# implementation of" instead of "implementing". Narrow "the ___ of" shape
-# keeps false positives low (skips normal technical nouns like
-# "configuration file", which don't take this construction).
-NOMINALIZATION_PATTERN='\bthe [a-z]+(ment|tion|sion|ance) of\b'
+# Nominalization ("the implementation of" vs "implementing") is judged by
+# Haiku (stage 2) only, not regexed here: testing found "the X of" false-
+# positives on ordinary technical nouns like "the configuration of the
+# load balancer", where "configuration" is a concrete noun, not a verb in
+# hiding. Telling the two apart needs the judgment a regex can't do.
 
 hits=""
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$checktext" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
@@ -114,32 +119,34 @@ if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
   hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
 fi
 
-if grep -qiE "$NOMINALIZATION_PATTERN" <<<"$checktext"; then
-  hits="${hits:+$hits; }hidden-verb nominalization ('the X of' instead of a plain verb — Federal Plain Language Guidelines)"
-fi
-
 emdash_count=$(grep -o '—' <<<"$checktext" 2>/dev/null | wc -l | tr -d ' ')
 [ -z "$emdash_count" ] && emdash_count=0
 if [ "$emdash_count" -ge 3 ]; then
   hits="${hits:+$hits; }em dash overused ($emdash_count occurrences)"
 fi
 
-# Federal Plain Language ceiling: ~40 words/sentence. Sentence-split on
-# ./!/? followed by whitespace; longest sentence wins.
-longest_sentence=$(awk 'BEGIN{RS="[.!?]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$checktext")
+# Federal Plain Language ceiling: ~40 words/sentence. Split on ./!/? AND ;
+# — testing found a semicolon-joined enumeration ("risk A; risk B; risk C")
+# is dense, legitimate writing, not one padded run-on sentence; each clause
+# is its own unit and should be measured separately.
+longest_sentence=$(awk 'BEGIN{RS="[.!?;]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$checktext")
 if [ "$longest_sentence" -gt 40 ]; then
   hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
 fi
 
-# Cowan (2001): working memory holds ~4 chunks. A long flat, unstructured
-# list (no sub-grouping) is a comfortable-limit violation past ~6 items.
+# Cowan (2001)'s ~4-chunk comfortable limit is for material held in working
+# memory at once. A sequential checklist (read-and-execute-in-order, e.g.
+# setup steps) isn't held simultaneously the way a list of facts is, and
+# testing found genuinely necessary 8-step checklists getting flagged at
+# the original threshold of 6 — loosened to 10 as a looser "too long even
+# for sequential reading" ceiling, not Cowan's comfortable number.
 max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$checktext")
-if [ "$max_bullets" -gt 6 ]; then
-  hits="${hits:+$hits; }flat list too long ($max_bullets items, working-memory comfortable limit is ~4-5 — Cowan 2001)"
+if [ "$max_bullets" -gt 10 ]; then
+  hits="${hits:+$hits; }flat list too long ($max_bullets items — even for sequential reading, consider grouping)"
 fi
 
 if [ -n "$hits" ]; then
-  block "Style check failed [regex] ($hits). Rewrite per CLAUDE.md writing rules: cut the flagged words/constructions, stay terse, no filler. Quoted/code content is exempt — this only matched text you authored."
+  block "Style check failed [regex] ($hits). Rewrite per CLAUDE.md writing rules: cut the flagged words/constructions, stay terse, no filler. Fenced code is exempt — if this matched inside a blockquote, either it's your own words (fix it) or state it as plain prose instead of blockquote formatting."
 fi
 
 # --- Stage 2: structural check via Haiku, only when stage 1 passed ----
@@ -149,18 +156,20 @@ verdict=$(claude --restricted --model haiku -p "You judge one message against on
 AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact wording).
 - Filler/hedging, banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
 - Rule-of-three lists used as filler, hollow significance framing ('X reflects/underscores a deeper Y')
-- Throat-clearing before the answer, negated-strawman parallelism ('not X, it is Y' where nobody claimed X)
+- Throat-clearing before the answer
+- Negated-strawman parallelism ('It's not X, it's Y' where nobody claimed X — a REAL strawman being knocked down for rhetorical effect). Do NOT flag a direct 'No,'/'Yes,' answer to a yes/no question followed by a brief gloss (e.g. 'No, not automatically — it runs on save.') — that is just answering the question, not a rhetorical negation.
 - Copula avoidance ('serves as' instead of 'is')
+- Hidden-verb nominalization ('the implementation of X' instead of 'implementing X') — only when a plain verb genuinely reads better; do NOT flag ordinary concrete nouns like 'the configuration of the load balancer', where the noun names a real thing, not a disguised action
 
 AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, each stated as prefer/avoid so the target behavior is explicit, not just the prohibition:
 1. Point first. Prefer: open with the main point (answer, finding, conclusion). Avoid: reasoning or elaboration before it.
-2. Context before ask. Prefer: state the situation, then the ask; for a genuine question, offer a recommended option with one brief reason. Avoid: asking before context, or leaving a real question fully open for the reader to decide alone.
+2. Context before ask. Prefer: state the situation, then the ask; for a genuine question offering the reader a choice, ALWAYS include a recommended option with one brief reason, even for a short single-sentence question. Avoid: asking before context, or a question that presents options/alternatives with no stated recommendation at all (check this explicitly — it is easy to miss on short messages).
 3. Clean structure. Prefer: groupings/lists that are genuinely distinct and complete. Avoid: overlapping or gap-leaving categories, or padding a list to hit a count.
 4. Say only what's warranted. Two root causes when this fails: sycophancy (manufacturing agreeable-sounding content to match perceived expectations rather than what the situation actually supports) and verbosity/length bias (padding output because length itself got learned as a proxy for perceived thoroughness, independent of whether it adds information). Prefer: state what's actually true or needed here, then stop. Avoid: restating what's already visible elsewhere in the text, inventing a caveat/tradeoff just to look thorough, or elaborating past what was asked.
 5. Respect working-memory limits. Prefer: sentences and lists short enough to hold in the head at once. Avoid: long unbroken sentences or long flat lists.
 6. Unambiguous terminal state. Prefer: end by naming one of a small set of plain states (e.g. done; blocked, needs X). Avoid: hedging or trailing off so the ending must be inferred. This checks clarity of what's said, not whether it's true.
 
-Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code blocks and blockquote lines have already been stripped from the text below; if what remains still reads like a pasted excerpt, don't flag it either.
+Never flag on either axis: code blocks, inline code, file paths, commands, error strings, identifiers, numbers, or anything the author is quoting/relaying verbatim (another person's words, a file's contents, a tool's output) rather than writing themselves — content the author didn't compose isn't theirs to be judged on. Fenced code has already been stripped from the text below. Markdown blockquote lines (starting with '>') have NOT been stripped — judge them: if a '>' line reads like a genuine external quote (an error message, someone else's words), don't flag it; if it reads like the author's own commentary or opinion continuing in blockquote formatting, it's authored text and IS subject to both axes like anything else.
 Do NOT flag: plain technical writing, terse fragments, legitimate lists of genuinely distinct facts, normal use of 'and'/'but'. A word from the checklist below used ONCE, in an ordinary sentence, is not a violation by itself — the tell is the word recurring or the sentence being built around it, not its mere presence.
 
 Per axis: VIOLATION only when you are sure the reader would notice it. NOTE when something feels off but you are not certain enough to force a rewrite — these are surfaced to the reader, not auto-corrected.
