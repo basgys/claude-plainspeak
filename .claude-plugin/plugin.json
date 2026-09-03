@@ -1,12 +1,12 @@
 {
-  "name": "nospin",
+  "name": "plainspeak",
   "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load (evidence-based: BLUF, SBAR, Minto, Cowan 2001, Federal Plain Language) — free regex first, a stateless Haiku classifier fallback second.",
   "version": "1.1.0",
   "author": {
     "name": "basgys"
   },
-  "homepage": "https://github.com/basgys/claude-nospin",
-  "repository": "https://github.com/basgys/claude-nospin",
+  "homepage": "https://github.com/basgys/claude-plainspeak",
+  "repository": "https://github.com/basgys/claude-plainspeak",
   "license": "MIT",
   "keywords": [
     "hooks",

@@ -1,4 +1,4 @@
-# nospin
+# plainspeak
 
 Two Claude Code hooks that gatekeep AI-writing tells and cognitive-load problems before they reach you — in chat replies, and in PR descriptions.
 
@@ -22,8 +22,8 @@ Rules are grounded in a CLAUDE.md-style writing-rules doc and evidence-based com
 As a plugin (recommended):
 
 ```
-/plugin marketplace add basgys/claude-nospin
-/plugin install nospin@claude-nospin
+/plugin marketplace add basgys/claude-plainspeak
+/plugin install plainspeak@claude-plainspeak
 ```
 
 Or manually: copy both scripts under `hooks/` to `~/.claude/hooks/`, `chmod +x` them, and merge this into `~/.claude/settings.json`:

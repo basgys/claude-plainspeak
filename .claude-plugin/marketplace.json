@@ -1,11 +1,11 @@
 {
-  "name": "claude-nospin",
+  "name": "claude-plainspeak",
   "owner": {
     "name": "basgys"
   },
   "plugins": [
     {
-      "name": "nospin",
+      "name": "plainspeak",
       "source": "./",
       "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load, with a regex-first / Haiku-fallback check."
     }
