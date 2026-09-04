@@ -202,11 +202,15 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
       hits="${hits:+$hits; }significance coda (\"$coda_ex\"): a verbless fragment, then a clause commenting on it. Say what follows from it, or cut the clause"
     fi
-    # p95 of this user's own corpus, so the threshold is calibrated instead
-    # of invented. Fires on 4.8% of historical messages.
-    if awk "BEGIN{exit !($nom > 5.556)}" 2>/dev/null; then
-      hits="${hits:+$hits; }nominalization above your p95 ($nom per 100 words: $nom_ex). Use the plain verb"
-    fi
+    # Nominalization is measured and reported, never blocked. It was the
+    # best-replicated metric in the literature (d = 0.9 to 1.35 across two
+    # corpora), and it does not survive contact with this corpus: against
+    # 20,000 pre-ChatGPT Linux kernel commit bodies it fires on 3.9% of
+    # human prose against 4.8% here. At a 1% human false-positive rate it
+    # separates 0.9% to 1.0%, which is no separation at all. Software
+    # English is congenitally nominalized and the published effect was
+    # measured on academic prose, so the register is wrong.
+    :
   fi
 fi
 

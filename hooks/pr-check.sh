@@ -178,9 +178,9 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
       hits="${hits:+$hits; }significance coda (\"$coda_ex\")"
     fi
-    if awk "BEGIN{exit !($nom > 5.556)}" 2>/dev/null; then
-      hits="${hits:+$hits; }nominalization above p95 ($nom per 100 words)"
-    fi
+    # Nominalization is reported by metrics.py and never blocked here: it
+    # shows no separation against human kernel commits. See sanity.sh.
+    :
   fi
 fi
 
