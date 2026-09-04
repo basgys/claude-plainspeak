@@ -84,7 +84,7 @@ export PROMPT OUT WORK
 label_one() {
   f="$1"
   txt=$(jq -r '.text' "$f")
-  ver=$(timeout 150 claude --restricted --model haiku --tools "" \
+  ver=$(timeout 240 claude --restricted --model "${JUDGE_MODEL:-haiku}" ${JUDGE_EFFORT:+--effort "$JUDGE_EFFORT"} --tools "" \
         --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." \
         --no-session-persistence -p "$PROMPT
 TEXT:
