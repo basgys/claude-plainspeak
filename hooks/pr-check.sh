@@ -70,7 +70,7 @@ block() {
   exit 2
 }
 
-# --- Stage 1: regex (same lists as the chat response check) -----------
+# --- Stage 1: patterns (same lists as the chat response check) --------
 
 HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuanced|tapestry|leverage|utilize|robust|innovative|streamline|great question|good point|absolutely|certainly|of course|awesome|honestly|to be clear|fair point|fair pushback|I should note|it.s worth noting)\b'
 SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|groundbreaking|game.?changer|cutting.?edge|paradigm shift|holistic approach|synergy|underscores?|exemplifies|nestled|in the heart of)\b'
@@ -185,7 +185,7 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ -n "$hits" ]; then
-  block "regex ($hits). Rewrite, cut the flagged constructions."
+  block "fast checks ($hits). Rewrite, cut the flagged constructions."
 fi
 
 CLASSIFIER_TIMEOUT=90

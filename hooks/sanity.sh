@@ -125,7 +125,7 @@ checktext=$(awk '
   { print }
 ' <<<"$msg")
 
-# --- Stage 1: regex ---------------------------------------------------
+# --- Stage 1: patterns (part of the "fast checks" the hook reports) ---
 
 # Hard list: CLAUDE.md's own explicit banned tokens. Zero tolerance by the
 # user's own standing instruction — any occurrence blocks.
@@ -325,11 +325,11 @@ if [ "$max_bullets" -gt 10 ]; then
 fi
 
 if [ -n "$hits" ]; then
-  log_verdict regex block "$hits"
-  block "Style [regex]: $hits. Cut the flagged constructions, keep it terse. Fenced code is exempt; blockquotes are not."
+  log_verdict fast block "$hits"
+  block "Style [fast checks]: $hits. Cut the flagged constructions, keep it terse. Fenced code is exempt; blockquotes are not."
 fi
 
-# --- Stage 2: structural check via Haiku, only when stage 1 passed ----
+# --- Stage 2: model judge, only when the fast checks pass -------------
 
 # Measured 27-79s on a 235-word message. The cost is Haiku composing the
 # judgment, and it is wildly variable. Things that do NOT help, all
@@ -394,8 +394,8 @@ $checktext" 2>/dev/null)
 # A silent pass here is the dangerous failure: an empty verdict parses as
 # "no VIOLATION found" and the message ships as if it had been checked.
 if [ -z "$verdict" ] || [[ "$verdict" != *"STYLE:"* ]]; then
-  log_verdict haiku unchecked "classifier timed out or failed"
-  jq -n --arg m "⚠️  UNCHECKED ↑ stage 2 classifier timed out or failed; regex checks passed" \
+  log_verdict model unchecked "model judge timed out or failed"
+  jq -n --arg m "⚠️  UNCHECKED ↑ fast checks (patterns + metrics) passed, model judge timed out" \
     '{systemMessage: $m}'
   rm -f "$counter_file"
   exit 0
@@ -421,12 +421,12 @@ elif [[ "$cog_val" == NOTE:* ]]; then
 fi
 
 if [ -n "$violations" ]; then
-  log_verdict haiku block "$violations"
-  block "Style [$violations]"
+  log_verdict model block "$violations"
+  block "Style [model judge: $violations]"
 fi
 
 if [ -n "$notes" ]; then
-  log_verdict haiku note "$notes"
+  log_verdict model note "$notes"
   jq -n --arg m "Style note (not blocking): $notes" '{systemMessage: $m}'
   rm -f "$counter_file"
   exit 0
