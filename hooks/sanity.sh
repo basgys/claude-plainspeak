@@ -199,6 +199,11 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
     coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
     nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
     nom_ex=$(jq -r '.nominal_hits | join(", ")' <<<"$m" 2>/dev/null)
+    negflag=$(jq -r '.neg_parallel_flag // false' <<<"$m" 2>/dev/null)
+    negn=$(jq -r '.neg_parallel // 0' <<<"$m" 2>/dev/null)
+    if [ "$negflag" = "true" ]; then
+      hits="${hits:+$hits; }negative parallelism (x$negn): stating what is NOT the case right after stating what is. Delete the negated half; if nothing is lost, cut it"
+    fi
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
       hits="${hits:+$hits; }significance coda (\"$coda_ex\"): a verbless fragment, then a clause commenting on it. Say what follows from it, or cut the clause"
     fi
@@ -220,19 +225,12 @@ if [ -n "$coda_m" ]; then
   hits="${hits:+$hits; }significance coda ($coda_m) — say what follows from it, or cut the clause"
 fi
 
-neg_all=$(grep -oiE "$NEG_PARALLEL_PATTERN" <<<"$checktext" 2>/dev/null)
-neg_count=$(wc -l <<<"$neg_all" | tr -d ' ')
-[ -z "$neg_all" ] && neg_count=0
-if [ "$neg_count" -ge 2 ]; then
-  hits="${hits:+$hits; }negative parallelism x$neg_count (stating what is NOT the case right after stating what is — 'X, not Y' / 'X rather than Y'; the negation adds nothing, cut it)"
-fi
+# The bash counter that lived here is retired. metrics.py now decides
+# this with two tiers, measured against 262 messages where two independent
+# judges agreed: a single strict hit blocks, and the looser "instead of"
+# form needs a second hit. That took the fast checks from 89% to 95%
+# recall at 90% precision.
 
-# Density, not an absolute count: the tell is em dashes every other
-# sentence, so a fixed ceiling of 3 punished long structured answers for
-# their length alone. One block cost a full discarded draft over 3 dashes
-# in ~430 words, and the rewrite only swapped them for commas — the reader
-# scrolled a near-identical wall to find one cosmetic diff. Allow 1 per 150
-# words, floor 3, so a short reply still cannot stack them.
 emdash_count=$(grep -o '—' <<<"$checktext" 2>/dev/null | wc -l | tr -d ' ')
 [ -z "$emdash_count" ] && emdash_count=0
 word_count=$(wc -w <<<"$checktext" | tr -d ' ')

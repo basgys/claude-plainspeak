@@ -221,9 +221,20 @@ RARE_STYLE = re.compile(
 
 # --- other counted forms already enforced in bash ---------------------
 
+# Two tiers, measured against 262 messages where two independent judges
+# agreed. A single strict hit blocks; the looser "instead of" form needs a
+# second hit to join it.
+#
+# The strict form alone at 2+ scored precision 99%, recall 68%. At 1+ it
+# scores 96% / 87%. Since 17 of the 20 violations that only the model judge
+# caught were single-occurrence negative parallelism, the recall matters
+# more here than the last point of precision. End to end the fast checks go
+# from 89% to 95% recall, at 90% precision, and human false positives on
+# kernel commits rise from 4.8% to 7.3%.
 NEG_PARALLEL = re.compile(
     r"(,|—|;) *not +(just |only |merely |simply )?[a-z0-9\"]|\brather than\b", re.I
 )
+NEG_PARALLEL_LOOSE = re.compile(r"\binstead of\b", re.I)
 TERMINAL_STATE = re.compile(
     r"\?|\b(done|blocked|waiting|awaiting|next step|say go|want me to|shall i|"
     r"should i|let me know|nothing (changed|to do)|no changes|ready|pushed|"
@@ -290,6 +301,10 @@ def compute(raw):
         "figures_per_paragraph": figures_per_paragraph(prose),
         "has_terminal_state": bool(TERMINAL_STATE.search(tail)),
         "neg_parallel": len(NEG_PARALLEL.findall(text)),
+        "neg_parallel_loose": len(NEG_PARALLEL_LOOSE.findall(text)),
+        "neg_parallel_flag": (len(NEG_PARALLEL.findall(text)) >= 1
+                              or len(NEG_PARALLEL.findall(text))
+                                 + len(NEG_PARALLEL_LOOSE.findall(text)) >= 2),
         # new, published support
         "coda": len(coda_hits),
         "coda_hits": coda_hits[:3],

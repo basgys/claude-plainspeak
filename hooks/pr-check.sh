@@ -175,6 +175,10 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
     coda=$(jq -r '.coda // 0' <<<"$m" 2>/dev/null || echo 0)
     coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
     nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
+    negflag=$(jq -r '.neg_parallel_flag // false' <<<"$m" 2>/dev/null)
+    if [ "$negflag" = "true" ]; then
+      hits="${hits:+$hits; }negative parallelism"
+    fi
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
       hits="${hits:+$hits; }significance coda (\"$coda_ex\")"
     fi
