@@ -57,11 +57,18 @@ if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
   exit 0
 fi
 
+# A blocked draft stays in the transcript forever: no hook can retract or
+# replace a message already displayed (verified against the hooks docs —
+# Stop can only block, and MessageDisplay cannot). So a rewrite cycle leaves
+# the reader several near-identical walls with no way to tell which one
+# survived. The systemMessage prints directly under the message it judged,
+# which makes it a verdict marker for the message ABOVE it: every draft gets
+# one, so the reader scrolls for the green tick and reads only that.
 block() {
   attempt=$((attempt + 1))
   echo "$attempt" > "$counter_file"
   if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
-    jq -n --arg m "Sanity check: gave up after $MAX_ATTEMPTS attempts, message left as-is." \
+    jq -n --arg m "⚠️  KEPT AS-IS ↑ still failing after $MAX_ATTEMPTS attempts, gave up" \
       '{systemMessage: $m}'
     rm -f "$counter_file"
     exit 0
@@ -69,14 +76,16 @@ block() {
   # Stop hooks only honor decision/reason at the TOP level of the output
   # JSON. Nested under hookSpecificOutput they are silently ignored: the
   # systemMessage still prints, but the reply goes through unchanged.
-  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" --arg m "Sanity check: rewriting ($attempt/$MAX_ATTEMPTS)" \
+  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" \
+    --arg m "❌ DISCARDED ↑ do not read, rewriting ($attempt/$MAX_ATTEMPTS)" \
     '{decision: "block", reason: $r, systemMessage: $m}'
   exit 0
 }
 
 pass() {
+  # Only mark the winner when there were losers above it to tell apart.
   if [ "$attempt" -gt 0 ]; then
-    jq -n --arg m "Sanity check: passed after $attempt correction(s)." '{systemMessage: $m}'
+    jq -n --arg m "✅ FINAL ANSWER ↑ read this one (passed after $attempt rewrite(s))" '{systemMessage: $m}'
   fi
   rm -f "$counter_file"
   exit 0

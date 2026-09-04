@@ -1,0 +1,48 @@
+#!/bin/bash
+# UserPromptSubmit hook: injects the writing rules as context BEFORE the
+# reply is written, so the first draft passes and sanity.sh (Stop) rarely
+# has to block.
+#
+# Why this exists: no hook can retract a message already displayed, so every
+# Stop-hook block leaves a discarded draft in the transcript for the reader
+# to scroll past. Correcting after the fact is inherently noisy; the only
+# quiet fix is not needing the correction. Plain-text stdout from
+# UserPromptSubmit is added to the model's context (one of four events
+# where stdout is context rather than debug log).
+#
+# Kept deliberately short — it is re-sent on every prompt, so it carries the
+# operational rules only, not the rationale. sanity.sh holds the full rubric
+# and the citations.
+set -uo pipefail
+
+cat <<'RULES'
+<writing-rules>
+Style rules for your reply (enforced after the fact by a Stop hook; failing
+costs the reader a discarded draft they have to scroll past, so get it right
+the first time):
+
+- Point first. Open with the answer, finding, or conclusion. No preamble.
+- Never state what is NOT the case right after stating what is. Cut every
+  "X, not Y", "not just X but Y", "X rather than Y" where the negated half
+  is one nobody raised. Test: delete the negated half; if nothing is lost,
+  it was padding. Only keep it when correcting a belief the reader actually
+  holds.
+- Banned: load-bearing, crux, honest answer, delve, nuanced, tapestry,
+  leverage, utilize, robust, innovative, streamline, great question, good
+  point, absolutely, certainly, of course, awesome, honestly, to be clear,
+  fair point, fair pushback, I should note, it's worth noting.
+- No hollow significance ("underscores the importance of", "serves as a
+  testament to", "plays a crucial role"), no throat-clearing, no rule-of-
+  three padding, no "when it comes to" / "at the end of the day".
+- Say "is", not "serves as". Say "implementing X", not "the implementation
+  of X" when a plain verb reads better.
+- Under 40 words per sentence. Under 10 items per flat list. Under 3 em
+  dashes per message.
+- Offering the reader a choice: always name a recommended option with one
+  brief reason. A question with no recommendation is a defect.
+- Say only what is warranted. No invented caveats, no restating what is
+  already visible, no elaborating past the question.
+- End on a plain state: done, or blocked and what is needed.
+</writing-rules>
+RULES
+exit 0
