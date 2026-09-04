@@ -17,19 +17,12 @@ COUNT="${3:-100}"
 PAR="${4:-12}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SANITY="$ROOT/hooks/sanity.sh"
 METRICS="$ROOT/hooks/metrics.py"
 
 # Pull the rubric out of sanity.sh, between `-p "` and the TEXT: marker.
-PROMPT=$(python3 - "$SANITY" <<'PY'
-import sys
-s = open(sys.argv[1]).read()
-i = s.index('verdict=$(')
-j = s.index('-p "', i) + 4
-k = s.index('\nTEXT:', j)
-print(s[j:k])
-PY
-)
+# The rubric lives in judge/rubric.txt since the Stop hook stopped calling
+# a model. Reading it here keeps docs/judge-benchmark.md reproducible.
+PROMPT=$(cat "$ROOT/judge/rubric.txt")
 [ -z "$PROMPT" ] && { echo "could not extract the stage 2 prompt" >&2; exit 1; }
 
 # Stratified sample: take from across the metric-signal range so the labels

@@ -57,6 +57,23 @@ trusted continuously.
 Revisit if: an Anthropic model is measured above kappa 0.6 on this
 protocol, or the privacy tradeoff changes.
 
+## Status
+
+The Stop hook no longer calls a model. Once the Python metrics absorbed
+negative parallelism they caught 95% of what the two judges agree on, at
+90% precision, in 300ms rather than 27-79 seconds.
+
+Cost of the removal, on the same 300 labelled messages: of the 80 that
+pass every fast check, 16 are still consensus violations, so about a fifth
+of the clean-looking band ships unjudged. Those are predominantly
+cognitive-load items no regex sees.
+
+`judge/rubric.txt` keeps the rubric, so this protocol still runs and the
+model judge can be reinstated by measurement.
+
+`hooks/pr-check.sh` still calls a model. It fires on `gh pr create` only,
+so the wait is once per PR instead of once per turn.
+
 ## Protocol
 
 Reproducible from a clean checkout. Every number above came from these

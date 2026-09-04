@@ -23,15 +23,9 @@ MODEL="${OPENAI_MODEL:-gpt-5.6-terra}"
 : "${OPENAI_API_KEY:?set OPENAI_API_KEY}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PROMPT=$(python3 - "$ROOT/hooks/sanity.sh" <<'PY'
-import sys
-s = open(sys.argv[1]).read()
-i = s.index('verdict=$(')
-j = s.index('-p "', i) + 4
-k = s.index('\nTEXT:', j)
-print(s[j:k])
-PY
-)
+# The rubric lives in judge/rubric.txt since the Stop hook stopped calling
+# a model. Reading it here keeps docs/judge-benchmark.md reproducible.
+PROMPT=$(cat "$ROOT/judge/rubric.txt")
 [ -z "$PROMPT" ] && { echo "could not extract the rubric" >&2; exit 1; }
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
