@@ -109,14 +109,27 @@ checktext=$(awk '
 
 # Hard list: CLAUDE.md's own explicit banned tokens. Zero tolerance by the
 # user's own standing instruction — any occurrence blocks.
-HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuanced|tapestry|leverage|utilize|robust|innovative|streamline|great question|good point|absolutely|certainly|of course|awesome|honestly|to be clear|fair point|fair pushback|I should note|it.s worth noting)\b'
+HARD_WORD_PATTERN='\b(load-bearing|crux|honest answer|honest solution|delve|nuanced|tapestry|leverage|utilize|robust|innovative|streamline|great question|good point|absolutely|certainly|of course|awesome|honestly|to be clear|fair point|fair pushback|I should (note|flag|mention|call out|point out|say)|it.s worth noting)\b'
 
 # Soft list: words that are fine on a single, ordinary use but are the tell
 # when repeated — the actual complaint is "this appears every sentence",
 # not "this word exists". Requires >=2 total hits to flag.
 SOFT_WORD_PATTERN='\b(boasts?|bolstered|testament|vibrant|showcas(e|es|ing)|groundbreaking|game.?changer|cutting.?edge|paradigm shift|holistic approach|synergy|underscores?|exemplifies|nestled|in the heart of)\b'
 
-PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b|(^|[.!?] )rather, (it|this|that|they|the)\b|\bno [a-z]+, no [a-z]+, just\b'
+PHRASE_PATTERN='not (just |merely |simply )?[a-zA-Z ]{1,40}(,? but |, it.s )|not (just |only )?about [a-zA-Z ]{1,40}(,? it.s about|, but about)|whether (you.re|it.s|this is) [a-zA-Z ]{1,30}(,| or)|in (today.s|this) (fast-paced|ever-evolving|ever-changing) world|when it comes to|at the end of the day|let.s (dive|break|unpack)|unlock the (power|potential) of|navigate the complexities|harness the power of|embark on (a|an|this)|seamless(ly)? integrat|(stands|serves) as a (testament|reminder)|is a testament to|plays a (crucial|pivotal|vital|key) role|sets the stage for|underscores? (its|the) importance|,\s*(highlighting|underscoring|emphasizing|reflecting|symbolizing|demonstrating|showcasing) (the|its|how|that)|\bin (connection|association) with\b|\b(widely|particularly) associated with\b|(^|[.!?] )rather, (it|this|that|they|the)\b|\bno [a-z]+, no [a-z]+, just\b|(^|[.!?] )(here.s|here is) (what|the (thing|key|short)) |\b(two|three|four) things (I|to) (should |want to )?(flag|note|mention|call out)\b'
+
+# Significance coda: a clipped verdict, a comma, then a coordinated clause
+# asserting that the thing matters, in place of showing why. "Mixed, and
+# the split matters." "Modelled, and the model is mine." Wikipedia files
+# the family under undue emphasis on symbolism and importance; this
+# compressed form has no name there. It reads as portent and carries no
+# information: the reader learns something is significant without learning
+# what follows from it.
+#
+# Blocks on one occurrence. A bare fragment opener is fine on its own
+# ("Done, and pushed."), so the pattern requires the significance tail or
+# the self-referential reframe that makes it a coda.
+SIGNIFICANCE_CODA_PATTERN='\b(and|but) (the|that|this|it|those|these) [a-z]{2,14}( [a-z]{2,14})?( (really|actually|genuinely))? (matters|is the point|counts|is what counts|makes the difference|changes everything)\b|\b(that|this|which)( part| bit)? (really |actually )?matters\b|(^|[.!?] )[A-Z][a-z]{2,12}(ed)?, (and|but) (the|that|this|it) [a-z]{2,14} (is|are|was|were|comes|come|belongs|follows)\b'
 
 # Negative parallelism, the trailing-appositive form: state the thing, then
 # negate an alternative nobody proposed ("it samples the container's cgroup
@@ -153,6 +166,11 @@ fi
 
 if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
   hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
+fi
+
+coda_m=$(grep -oiE "$SIGNIFICANCE_CODA_PATTERN" <<<"$checktext" 2>/dev/null | head -3 | paste -sd'; ' -)
+if [ -n "$coda_m" ]; then
+  hits="${hits:+$hits; }significance coda ($coda_m) — say what follows from it, or cut the clause"
 fi
 
 neg_all=$(grep -oiE "$NEG_PARALLEL_PATTERN" <<<"$checktext" 2>/dev/null)
