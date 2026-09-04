@@ -31,6 +31,16 @@ the first time):
   leverage, utilize, robust, innovative, streamline, great question, good
   point, absolutely, certainly, of course, awesome, honestly, to be clear,
   fair point, fair pushback, I should note, it's worth noting.
+- Never open a sentence with a verbless fragment and then hang a comma
+  plus "and"/"but" clause off it that only comments on the fragment. State
+  the thing, then state what follows from it, or stop.
+- Never promise action you do not deliver. If a lead-in says something is
+  worth acting on or flagging, it must be followed by an imperative, a
+  decision, or a question. Otherwise state the observation plainly.
+- Only ask what the reader can answer and you cannot. A question you could
+  settle from the context, the code, or an obvious default is fake due
+  diligence: it looks careful and hands the work back. Make the call and
+  say which you made.
 - No hollow significance ("underscores the importance of", "serves as a
   testament to", "plays a crucial role"), no throat-clearing, no rule-of-
   three padding, no "when it comes to" / "at the end of the day".
