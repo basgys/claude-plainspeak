@@ -1,6 +1,7 @@
 # Judge benchmark
 
-Which model should run the stage 2 classifier in `hooks/sanity.sh`.
+Which model should judge writing quality, and whether a model is needed
+at all. The Stop hook now answers the second question with no; see Status.
 
 ## Results
 
@@ -49,13 +50,15 @@ judge, catching the target constructions, and speed (6x).
 
 ### Decision
 
-Haiku stays, for now. Switching to Luna sends every assistant message to a
-third party on every turn, which is a privacy cost rather than a technical
-one. `tools/redact.py` exists and would have to move into the hook and be
-trusted continuously.
+Luna was rejected on privacy: it would send every assistant message to a
+third party on every turn. `tools/redact.py` exists and would have to move
+into the hook and be trusted continuously.
 
-Revisit if: an Anthropic model is measured above kappa 0.6 on this
-protocol, or the privacy tradeoff changes.
+Haiku was then removed outright, since the Python metrics reached 95%
+recall and the remote call was buying 5% for a minute of waiting.
+
+Revisit if an Anthropic model measures above kappa 0.6 on this protocol,
+or the privacy tradeoff changes.
 
 ## Status
 
@@ -113,9 +116,9 @@ OPENAI_API_KEY=... OPENAI_MODEL=gpt-5.6-terra \
   tools/judge_openai.sh sample-redacted.json terra.jsonl 300 8
 ```
 
-Both scripts extract the rubric from `hooks/sanity.sh` at runtime rather
-than copying it, so every judge answers the question the hook actually
-asks, and the benchmark cannot drift from the shipped rules.
+Both scripts read the rubric from `judge/rubric.txt`, so every judge
+answers the same question. That file was the Stop hook's stage 2 prompt
+before the model call was removed.
 
 `JUDGE_EFFORT` sets `--effort` on the Claude side.
 
