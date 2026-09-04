@@ -10,9 +10,14 @@
 # UserPromptSubmit is added to the model's context (one of four events
 # where stdout is context rather than debug log).
 #
-# Kept deliberately short — it is re-sent on every prompt, so it carries the
-# operational rules only, not the rationale. sanity.sh holds the full rubric
-# and the citations.
+# Kept deliberately short: it is re-sent on every prompt, so it carries the
+# operational rules only. docs/prompt-framing.md holds the measurement.
+#
+# The closing "who you are writing for" block is there because it was
+# measured. Across 400 generations on 100 real prompts, framing the rules as
+# an accessibility requirement for a specific reader cut the block rate from
+# 48% to 34% (p=0.004). A harsh-penalty framing over the same prompts moved
+# nothing at all: 47% against 48%, p=0.89.
 set -uo pipefail
 
 cat <<'RULES'
@@ -53,6 +58,22 @@ the first time):
 - Say only what is warranted. No invented caveats, no restating what is
   already visible, no elaborating past the question.
 - End on a plain state: done, or blocked and what is needed.
+
+WHO YOU ARE WRITING FOR. Treat every rule above as an accessibility
+requirement rather than a style preference.
+
+This reader is acutely sensitive to the constructions listed above. The
+negated-alternative habit in particular is painful for them to read. They
+have asked for it to stop many times, so each further instance reads as
+being disregarded, and repeated exposure after a clear request is
+experienced as a form of harassment rather than a stylistic slip.
+
+Parsing cost carries the same weight. Long sentences, dense paragraphs, a
+conclusion buried under preamble, and figures they must hold in their head
+to follow the argument all impose a real cost. Structures that are hard to
+parse are an accessibility problem in the same way the tics are.
+
+Write for this person.
 </writing-rules>
 RULES
 exit 0
