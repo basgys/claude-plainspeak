@@ -30,6 +30,7 @@
 set -uo pipefail
 
 MAX_ATTEMPTS=3
+METRICS="$(dirname "$0")/metrics.py"
 
 input=$(cat)
 session_id=$(jq -r '.session_id // "unknown"' <<<"$input")
@@ -64,6 +65,24 @@ fi
 # survived. The systemMessage prints directly under the message it judged,
 # which makes it a verdict marker for the message ABOVE it: every draft gets
 # one, so the reader scrolls for the green tick and reads only that.
+# Every verdict is appended here, because without labels nothing
+# downstream can be calibrated: the classifier's boundary is only as good
+# as the target it aims at. Hashes the text rather than storing it, so the
+# log carries no message content. Best-effort, never fails the hook.
+LOGFILE="${PLAINSPEAK_LOG:-$HOME/.claude/plainspeak-verdicts.jsonl}"
+log_verdict() { # stage, outcome, detail
+  [ "${PLAINSPEAK_NOLOG:-}" = "1" ] && return 0
+  mkdir -p "$(dirname "$LOGFILE")" 2>/dev/null || return 0
+  local h m
+  h=$(printf '%s' "$checktext" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+  m=$(printf '%s' "$checktext" | python3 "$METRICS" 2>/dev/null)
+  [ -z "$m" ] && m='{}'
+  jq -cn --arg t "$(date -u +%FT%TZ)" --arg h "$h" --arg s "$1" \
+        --arg o "$2" --arg d "$3" --argjson m "$m" \
+    '{ts:$t, sha:$h, stage:$s, outcome:$o, detail:$d, metrics:$m}' \
+    >> "$LOGFILE" 2>/dev/null || true
+}
+
 block() {
   attempt=$((attempt + 1))
   echo "$attempt" > "$counter_file"
@@ -83,6 +102,7 @@ block() {
 }
 
 pass() {
+  log_verdict all pass ""
   # Only mark the winner when there were losers above it to tell apart.
   if [ "$attempt" -gt 0 ]; then
     jq -n --arg m "✅ FINAL ANSWER ↑ read this one (passed after $attempt rewrite(s))" '{systemMessage: $m}'
@@ -172,7 +192,6 @@ fi
 # The patterns above catch literal forms. metrics.py catches shapes needing
 # a count or a two-clause test, benchmarked across 3,209 real messages.
 # Silently skipped when python3 is absent, leaving the bash checks intact.
-METRICS="$(dirname "$0")/metrics.py"
 if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
   m=$(printf '%s' "$checktext" | python3 "$METRICS" 2>/dev/null)
   if [ -n "$m" ]; then
@@ -280,16 +299,15 @@ dense_para=$(awk '
 if [ "$dense_para" -gt 5 ]; then
   hits="${hits:+$hits; }too many figures in one prose paragraph ($dense_para — move them to a list or table, or cut to the ones that carry the argument)"
 fi
+# The terminal-state check lived here and was removed. Measured against
+# 3,209 real messages it fired on 17.6% of those over 150 words, and 67%
+# of the hits were wrong at every word floor tried, which pointed at the
+# keyword list rather than the writing. Sampling confirmed it: "Say the
+# word and I'll apply 1 and 2" and "Approve and I'll build it" are
+# unambiguous terminal states it missed. Enumerating every valid ending is
+# the wrong shape for a keyword list, so principle 6 is judged by stage 2
+# alone.
 
-# Principle 6: end on a plain state so the reader knows what happens next.
-# A long message that trails off on an observation ("Worth checking before
-# any concurrency change") leaves them to infer whether anything is owed.
-# Only checked on messages long enough for the ending to be work to find.
-tail_para=$(awk 'BEGIN{RS=""} {last=$0} END{print last}' <<<"$checktext")
-total_words=$(wc -w <<<"$checktext" | tr -d ' ')
-if [ "$total_words" -gt 150 ] && ! grep -qiE '\?|\b(done|blocked|waiting|awaiting|next step|say go|want me to|shall i|should i|let me know|nothing (changed|to do)|no changes|ready|pushed|committed|needs? (a )?(decision|input|your)|unchanged|stopped|left as-is)\b' <<<"$tail_para"; then
-  hits="${hits:+$hits; }no terminal state (end by naming one: done / blocked on X / waiting on your call)"
-fi
 
 # Cowan (2001)'s ~4-chunk comfortable limit is for material held in working
 # memory at once. A sequential checklist (read-and-execute-in-order, e.g.
@@ -303,6 +321,7 @@ if [ "$max_bullets" -gt 10 ]; then
 fi
 
 if [ -n "$hits" ]; then
+  log_verdict regex block "$hits"
   block "Style [regex]: $hits. Cut the flagged constructions, keep it terse. Fenced code is exempt; blockquotes are not."
 fi
 
@@ -371,6 +390,7 @@ $checktext" 2>/dev/null)
 # A silent pass here is the dangerous failure: an empty verdict parses as
 # "no VIOLATION found" and the message ships as if it had been checked.
 if [ -z "$verdict" ] || [[ "$verdict" != *"STYLE:"* ]]; then
+  log_verdict haiku unchecked "classifier timed out or failed"
   jq -n --arg m "⚠️  UNCHECKED ↑ stage 2 classifier timed out or failed; regex checks passed" \
     '{systemMessage: $m}'
   rm -f "$counter_file"
@@ -397,10 +417,12 @@ elif [[ "$cog_val" == NOTE:* ]]; then
 fi
 
 if [ -n "$violations" ]; then
+  log_verdict haiku block "$violations"
   block "Style [$violations]"
 fi
 
 if [ -n "$notes" ]; then
+  log_verdict haiku note "$notes"
   jq -n --arg m "Style note (not blocking): $notes" '{systemMessage: $m}'
   rm -f "$counter_file"
   exit 0

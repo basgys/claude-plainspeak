@@ -167,6 +167,23 @@ if grep -qiE '\b(improves? (the )?(code )?(maintainability|readability|quality)|
   hits="${hits:+$hits; }unfalsifiable claim (name the mechanism, or give numbers)"
 fi
 
+# Stage 1.5: same structured metrics as the chat check (0.35ms).
+METRICS="$(dirname "$0")/metrics.py"
+if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
+  m=$(printf '%s' "$body" | python3 "$METRICS" 2>/dev/null)
+  if [ -n "$m" ]; then
+    coda=$(jq -r '.coda // 0' <<<"$m" 2>/dev/null || echo 0)
+    coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
+    nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
+    if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
+      hits="${hits:+$hits; }significance coda (\"$coda_ex\")"
+    fi
+    if awk "BEGIN{exit !($nom > 5.556)}" 2>/dev/null; then
+      hits="${hits:+$hits; }nominalization above p95 ($nom per 100 words)"
+    fi
+  fi
+fi
+
 if [ -n "$hits" ]; then
   block "regex ($hits). Rewrite, cut the flagged constructions."
 fi
