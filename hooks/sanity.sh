@@ -162,10 +162,19 @@ if [ "$neg_count" -ge 2 ]; then
   hits="${hits:+$hits; }negative parallelism x$neg_count (stating what is NOT the case right after stating what is — 'X, not Y' / 'X rather than Y'; the negation adds nothing, cut it)"
 fi
 
+# Density, not an absolute count: the tell is em dashes every other
+# sentence, so a fixed ceiling of 3 punished long structured answers for
+# their length alone. One block cost a full discarded draft over 3 dashes
+# in ~430 words, and the rewrite only swapped them for commas — the reader
+# scrolled a near-identical wall to find one cosmetic diff. Allow 1 per 150
+# words, floor 3, so a short reply still cannot stack them.
 emdash_count=$(grep -o '—' <<<"$checktext" 2>/dev/null | wc -l | tr -d ' ')
 [ -z "$emdash_count" ] && emdash_count=0
-if [ "$emdash_count" -ge 3 ]; then
-  hits="${hits:+$hits; }em dash overused ($emdash_count occurrences)"
+word_count=$(wc -w <<<"$checktext" | tr -d ' ')
+emdash_budget=$((word_count / 150))
+[ "$emdash_budget" -lt 3 ] && emdash_budget=3
+if [ "$emdash_count" -gt "$emdash_budget" ]; then
+  hits="${hits:+$hits; }em dash overused ($emdash_count in $word_count words, budget $emdash_budget)"
 fi
 
 # Federal Plain Language ceiling: ~40 words/sentence. Split on ./!/?/;/:
