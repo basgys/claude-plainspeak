@@ -205,6 +205,50 @@ if [ "$longest_sentence" -gt 40 ]; then
   hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
 fi
 
+# Cowan (2001) again, applied to figures rather than list items: a prose
+# paragraph carrying seven durations and counts forces the reader to hold
+# all of them to follow the argument. A real message did exactly this
+# (17h46m, 7 stacked, 599 queued, 17h55m, 20h9m, 19h25m, 4h29m in four
+# sentences) and stage 2 passed it, because a general "respect working
+# memory" principle is too soft to fire on.
+#
+# Prose only. Tables and lists are exempt: those are scanned column-wise
+# and put no load on memory, and benchmark rows legitimately carry many
+# figures. Identifiers (list.go:412, lake.foreach.diff, steam_app) are not
+# quantities and are excluded by the token shape.
+dense_para=$(awk '
+  function flush(  n, i, tok, t, c) {
+    if (para == "") return
+    c = 0
+    n = split(para, t, /[ \t]+/)
+    for (i = 1; i <= n; i++) {
+      tok = t[i]
+      gsub(/^[(\[]|[.,;:)\]]+$/, "", tok)
+      if (tok ~ /^[0-9][0-9,]*(\.[0-9]+)?(h[0-9]+m|m[0-9]+s|[hmsd]|%|x|GB|MB|KB|ms)?$/) c++
+    }
+    if (c > max) max = c
+    para = ""
+  }
+  /^[ \t]*$/ { flush(); next }
+  /^[ \t]*([-*+]|[0-9]+[.)])[ \t]/ { flush(); next }
+  /^[ \t]*[|│┌└├┐┘┤┬┴┼]/ { flush(); next }
+  { para = para " " $0 }
+  END { flush(); print max+0 }
+' <<<"$checktext")
+if [ "$dense_para" -gt 5 ]; then
+  hits="${hits:+$hits; }too many figures in one prose paragraph ($dense_para — move them to a list or table, or cut to the ones that carry the argument)"
+fi
+
+# Principle 6: end on a plain state so the reader knows what happens next.
+# A long message that trails off on an observation ("Worth checking before
+# any concurrency change") leaves them to infer whether anything is owed.
+# Only checked on messages long enough for the ending to be work to find.
+tail_para=$(awk 'BEGIN{RS=""} {last=$0} END{print last}' <<<"$checktext")
+total_words=$(wc -w <<<"$checktext" | tr -d ' ')
+if [ "$total_words" -gt 150 ] && ! grep -qiE '\?|\b(done|blocked|waiting|awaiting|next step|say go|want me to|shall i|should i|let me know|nothing (changed|to do)|no changes|ready|pushed|committed|needs? (a )?(decision|input|your)|unchanged|stopped|left as-is)\b' <<<"$tail_para"; then
+  hits="${hits:+$hits; }no terminal state (end by naming one: done / blocked on X / waiting on your call)"
+fi
+
 # Cowan (2001)'s ~4-chunk comfortable limit is for material held in working
 # memory at once. A sequential checklist (read-and-execute-in-order, e.g.
 # setup steps) isn't held simultaneously the way a list of facts is, and
@@ -256,7 +300,7 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 - Hidden-verb nominalization ('the implementation of X' instead of 'implementing X') — only when a plain verb genuinely reads better; do NOT flag ordinary concrete nouns like 'the configuration of the load balancer', where the noun names a real thing, not a disguised action
 
 AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, each stated as prefer/avoid so the target behavior is explicit, not just the prohibition:
-1. Point first. Prefer: open with the main point (answer, finding, conclusion). Avoid: reasoning or elaboration before it.
+1. Point first. Prefer: open with the main point (answer, finding, conclusion). Avoid: reasoning or elaboration before it. Apply this test literally before judging anything else: find the sentence a reader would act on (the recommendation, the fix, the thing to do next). Count how many words precede it. Over ~40 words, or behind a table or a supporting paragraph, that is a VIOLATION even when the message opens with a correct yes/no answer. Answering the question is not the same as leading with the finding. Quote the buried sentence and say it belongs in the opening.
 2. Context before ask. Prefer: state the situation, then the ask; for a genuine question offering the reader a choice, ALWAYS include a recommended option with one brief reason, even for a short single-sentence question. Avoid: asking before context, or a question that presents options/alternatives with no stated recommendation at all (check this explicitly — it is easy to miss on short messages).
 3. Clean structure. Prefer: groupings/lists that are genuinely distinct and complete. Avoid: overlapping or gap-leaving categories, or padding a list to hit a count.
 4. Say only what's warranted. Two root causes when this fails: sycophancy (manufacturing agreeable-sounding content to match perceived expectations rather than what the situation actually supports) and verbosity/length bias (padding output because length itself got learned as a proxy for perceived thoroughness, independent of whether it adds information). Prefer: state what's actually true or needed here, then stop. Avoid: restating what's already visible elsewhere in the text, inventing a caveat/tradeoff just to look thorough, or elaborating past what was asked.
