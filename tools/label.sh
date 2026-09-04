@@ -53,6 +53,16 @@ for t in msgs:
               + (mm["figures_per_paragraph"] > 5) + (mm["nominal_per_100w"] > 5.556))
     scored.append((signal, t, mm))
 
+# When the input is already a drawn sample (tools/sample.py), take it in
+# order: re-stratifying would reorder it and break alignment with the
+# second judge, which is the whole point of running both.
+import os
+if os.environ.get("PLAINSPEAK_NOSTRAT") == "1":
+    for i, (_, t, mm) in enumerate(scored[:count]):
+        json.dump({"i": i, "text": t, "metrics": mm}, open(f"{work}/{i:05d}.json", "w"))
+    print(f"took {min(count, len(scored))} in order", file=sys.stderr)
+    raise SystemExit
+
 # Even quota per signal level, so rare dirty messages are not swamped.
 by = {}
 for s, t, mm in scored:

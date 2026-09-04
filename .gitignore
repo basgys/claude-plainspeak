@@ -1,0 +1,4 @@
+# never commit judge outputs or samples: they contain message text
+*.jsonl
+corpus*.json
+sample*.json
