@@ -61,7 +61,7 @@ block() {
   attempt=$((attempt + 1))
   echo "$attempt" > "$counter_file"
   if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
-    jq -n --arg r "$1" --arg m "Sanity check: gave up after $MAX_ATTEMPTS correction attempts, letting it through as-is ($1)" \
+    jq -n --arg m "Sanity check: gave up after $MAX_ATTEMPTS attempts, message left as-is." \
       '{systemMessage: $m}'
     rm -f "$counter_file"
     exit 0
@@ -69,7 +69,7 @@ block() {
   # Stop hooks only honor decision/reason at the TOP level of the output
   # JSON. Nested under hookSpecificOutput they are silently ignored: the
   # systemMessage still prints, but the reply goes through unchanged.
-  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" --arg m "Sanity check: rewriting (attempt $attempt/$MAX_ATTEMPTS) — $1" \
+  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" --arg m "Sanity check: rewriting ($attempt/$MAX_ATTEMPTS)" \
     '{decision: "block", reason: $r, systemMessage: $m}'
   exit 0
 }
@@ -159,11 +159,30 @@ if [ "$emdash_count" -ge 3 ]; then
   hits="${hits:+$hits; }em dash overused ($emdash_count occurrences)"
 fi
 
-# Federal Plain Language ceiling: ~40 words/sentence. Split on ./!/? AND ;
+# Federal Plain Language ceiling: ~40 words/sentence. Split on ./!/?/;/:
 # — testing found a semicolon-joined enumeration ("risk A; risk B; risk C")
 # is dense, legitimate writing, not one padded run-on sentence; each clause
-# is its own unit and should be measured separately.
-longest_sentence=$(awk 'BEGIN{RS="[.!?;]+[ \t\n]+"} {n=split($0,w,/[ \t\n]+/); if(n>max) max=n} END{print max+0}' <<<"$checktext")
+# is its own unit and should be measured separately. A colon counts too: it
+# introduces a list rather than continuing the clause.
+#
+# Measured per LINE, never across newlines. The original RS spanned lines,
+# so a bullet list or a table with no terminal punctuation fused into one
+# giant "sentence" (a 4-item list of stats measured 55 words) and blocked
+# every rewrite attempt until the hook gave up. Table rows and list markers
+# are stripped or skipped for the same reason: they are layout, not prose.
+longest_sentence=$(awk '
+  { line = $0
+    if (line ~ /^[ \t]*[|│┌└├┐┘┤┬┴┼]/) next
+    sub(/^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/, "", line)
+    sub(/^[ \t]*#+[ \t]+/, "", line)
+    n = split(line, parts, /[.!?;:]+[ \t]+/)
+    for (i = 1; i <= n; i++) {
+      c = split(parts[i], w, /[ \t]+/)
+      if (c > max) max = c
+    }
+  }
+  END { print max+0 }
+' <<<"$checktext")
 if [ "$longest_sentence" -gt 40 ]; then
   hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
 fi
@@ -180,7 +199,7 @@ if [ "$max_bullets" -gt 10 ]; then
 fi
 
 if [ -n "$hits" ]; then
-  block "Style check failed [regex] ($hits). Rewrite per CLAUDE.md writing rules: cut the flagged words/constructions, stay terse, no filler. Fenced code is exempt — if this matched inside a blockquote, either it's your own words (fix it) or state it as plain prose instead of blockquote formatting."
+  block "Style [regex]: $hits. Cut the flagged constructions, keep it terse. Fenced code is exempt; blockquotes are not."
 fi
 
 # --- Stage 2: structural check via Haiku, only when stage 1 passed ----
@@ -243,11 +262,11 @@ elif [[ "$cog_val" == NOTE:* ]]; then
 fi
 
 if [ -n "$violations" ]; then
-  block "Style check failed [$violations]. Rewrite per CLAUDE.md writing rules."
+  block "Style [$violations]"
 fi
 
 if [ -n "$notes" ]; then
-  jq -n --arg m "Style note (not blocking) [$notes]" '{systemMessage: $m}'
+  jq -n --arg m "Style note (not blocking): $notes" '{systemMessage: $m}'
   rm -f "$counter_file"
   exit 0
 fi
