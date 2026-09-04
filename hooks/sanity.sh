@@ -222,7 +222,18 @@ fi
 
 # --- Stage 2: structural check via Haiku, only when stage 1 passed ----
 
-verdict=$(claude --restricted --model haiku --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
+# Measured 32-58s on a 235-word message: the rubric and the required
+# rewrite suggestions drive it, not the input (the same text with a trivial
+# prompt returns in 8s). --effort low made no difference (32s, 64s).
+# The harness timeout is 60s; bound the call at 45s from inside so the
+# script keeps enough time to say the check was skipped. Without this the
+# hook is killed outright and the message ships silently unchecked.
+CLASSIFIER_TIMEOUT=45
+timeout_cmd=""
+command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout $CLASSIFIER_TIMEOUT"
+command -v gtimeout >/dev/null 2>&1 && timeout_cmd="gtimeout $CLASSIFIER_TIMEOUT"
+
+verdict=$($timeout_cmd claude --restricted --model haiku --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
 
 AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact wording).
 - Filler/hedging, banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
@@ -259,6 +270,15 @@ COGNITIVE_LOAD: OK|VIOLATION: <fragment> — <reason> — prefer: <replacement o
 
 TEXT:
 $checktext" 2>/dev/null)
+
+# A silent pass here is the dangerous failure: an empty verdict parses as
+# "no VIOLATION found" and the message ships as if it had been checked.
+if [ -z "$verdict" ] || [[ "$verdict" != *"STYLE:"* ]]; then
+  jq -n --arg m "⚠️  UNCHECKED ↑ stage 2 classifier timed out or failed; regex checks passed" \
+    '{systemMessage: $m}'
+  rm -f "$counter_file"
+  exit 0
+fi
 
 style_val="${verdict#*STYLE: }"
 style_val="${style_val%%$'\n'*}"
