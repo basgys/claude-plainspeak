@@ -168,6 +168,30 @@ if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
   hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
 fi
 
+# --- Stage 1.5: structured metrics (stdlib Python, 0.35ms/message) ----
+# The patterns above catch literal forms. metrics.py catches shapes needing
+# a count or a two-clause test, benchmarked across 3,209 real messages.
+# Silently skipped when python3 is absent, leaving the bash checks intact.
+METRICS="$(dirname "$0")/metrics.py"
+if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
+  m=$(printf '%s' "$checktext" | python3 "$METRICS" 2>/dev/null)
+  if [ -n "$m" ]; then
+    coda=$(jq -r '.coda // 0' <<<"$m" 2>/dev/null || echo 0)
+    coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
+    nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
+    nom_ex=$(jq -r '.nominal_hits | join(", ")' <<<"$m" 2>/dev/null)
+    if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
+      hits="${hits:+$hits; }significance coda (\"$coda_ex\"): a verbless fragment, then a clause commenting on it. Say what follows from it, or cut the clause"
+    fi
+    # p95 of this user's own corpus, so the threshold is calibrated instead
+    # of invented. Fires on 4.8% of historical messages.
+    if awk "BEGIN{exit !($nom > 5.556)}" 2>/dev/null; then
+      hits="${hits:+$hits; }nominalization above your p95 ($nom per 100 words: $nom_ex). Use the plain verb"
+    fi
+  fi
+fi
+
+# Literal-form coda, kept as a floor under the two-clause test.
 coda_m=$(grep -oiE "$SIGNIFICANCE_CODA_PATTERN" <<<"$checktext" 2>/dev/null | head -3 | paste -sd'; ' -)
 if [ -n "$coda_m" ]; then
   hits="${hits:+$hits; }significance coda ($coda_m) — say what follows from it, or cut the clause"
@@ -323,7 +347,7 @@ AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact
 AXIS 2 — COGNITIVE_LOAD: protect the reader's attention, their scarcest resource. Every sentence that costs extra parsing effort without adding real information is a defect. Six general principles, each stated as prefer/avoid so the target behavior is explicit, not just the prohibition:
 1. Point first. Prefer: open with the main point (answer, finding, conclusion). Avoid: reasoning or elaboration before it. Apply this test literally before judging anything else: find the sentence a reader would act on (the recommendation, the fix, the thing to do next). Count how many words precede it. Over ~40 words, or behind a table or a supporting paragraph, that is a VIOLATION even when the message opens with a correct yes/no answer. Answering the question is not the same as leading with the finding. Quote the buried sentence and say it belongs in the opening.
 1b. No false promise of action. A heading or lead-in that promises the reader something to act on ('worth acting on', 'to flag', 'what to watch') must be followed by an actual action: an imperative telling them what to do, a decision you are making, or a question you are asking. Prose that only observes, under a header promising action, is a VIOLATION. Prefer: drop the promise and state the observation plainly, or add the action it implied.
-1c. No fake due diligence. Every question asked must be one the reader can answer and you cannot. A question answerable from the context you already have, from the code, or from a default any competent person would pick is a VIOLATION: it manufactures the appearance of care while handing back work. This includes asking permission for the obvious next step, and asking the reader to choose when one option is clearly right. Prefer: make the call, say which you made and why, and move.
+1c. No DUE DILIGENCE THEATER. Every question asked must be one the reader can answer and you cannot. A question answerable from the context you already have, from the code, or from a default any competent person would pick is a VIOLATION: it manufactures the appearance of care while handing back work. This includes asking permission for the obvious next step, and asking the reader to choose when one option is clearly right. Prefer: make the call, say which you made and why, and move.
 2. Context before ask. Prefer: state the situation, then the ask; for a genuine question offering the reader a choice, ALWAYS include a recommended option with one brief reason, even for a short single-sentence question. Avoid: asking before context, or a question that presents options/alternatives with no stated recommendation at all (check this explicitly — it is easy to miss on short messages).
 3. Clean structure. Prefer: groupings/lists that are genuinely distinct and complete. Avoid: overlapping or gap-leaving categories, or padding a list to hit a count.
 4. Say only what's warranted. Two root causes when this fails: sycophancy (manufacturing agreeable-sounding content to match perceived expectations rather than what the situation actually supports) and verbosity/length bias (padding output because length itself got learned as a proxy for perceived thoroughness, independent of whether it adds information). Prefer: state what's actually true or needed here, then stop. Avoid: restating what's already visible elsewhere in the text, inventing a caveat/tradeoff just to look thorough, or elaborating past what was asked.

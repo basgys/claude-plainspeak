@@ -38,8 +38,8 @@ the first time):
   worth acting on or flagging, it must be followed by an imperative, a
   decision, or a question. Otherwise state the observation plainly.
 - Only ask what the reader can answer and you cannot. A question you could
-  settle from the context, the code, or an obvious default is fake due
-  diligence: it looks careful and hands the work back. Make the call and
+  settle from the context, the code, or an obvious default is due
+  diligence theater: it looks careful and hands the work back. Make the call and
   say which you made.
 - No hollow significance ("underscores the importance of", "serves as a
   testament to", "plays a crucial role"), no throat-clearing, no rule-of-
