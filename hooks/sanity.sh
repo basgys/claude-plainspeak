@@ -222,18 +222,24 @@ fi
 
 # --- Stage 2: structural check via Haiku, only when stage 1 passed ----
 
-# Measured 32-58s on a 235-word message: the rubric and the required
-# rewrite suggestions drive it, not the input (the same text with a trivial
-# prompt returns in 8s). --effort low made no difference (32s, 64s).
-# The harness timeout is 60s; bound the call at 45s from inside so the
-# script keeps enough time to say the check was skipped. Without this the
-# hook is killed outright and the message ships silently unchecked.
-CLASSIFIER_TIMEOUT=45
+# Measured 27-79s on a 235-word message. The cost is Haiku composing the
+# judgment, and it is wildly variable. Things that do NOT help, all
+# measured: --effort low (32s, 64s), a terse output format with no rewrite
+# suggestions (27s), moving the rubric into --system-prompt to get a
+# cacheable prefix (79s). CLI startup is only ~2.5s of it, and --tools ""
+# takes that to ~2.1s while also dropping the tool schemas from the
+# request, so it is kept as the one real win.
+#
+# The ceiling is deliberately generous: waiting is cheaper than reading a
+# reply that wastes time. Bound at 90s under a 120s harness timeout, so the
+# script always keeps enough time to report. Without the bound the hook is
+# killed outright and the message ships silently unchecked.
+CLASSIFIER_TIMEOUT=90
 timeout_cmd=""
 command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout $CLASSIFIER_TIMEOUT"
 command -v gtimeout >/dev/null 2>&1 && timeout_cmd="gtimeout $CLASSIFIER_TIMEOUT"
 
-verdict=$($timeout_cmd claude --restricted --model haiku --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
+verdict=$($timeout_cmd claude --restricted --model haiku --tools "" --system-prompt "You are a precise text classifier. Follow only the instructions in the user's message, and reply in exactly the format it requests." --no-session-persistence -p "You judge one message against one person's writing rules, on TWO independent axes. Report both, even if one is clean.
 
 AXIS 1 — STYLE: mechanical AI-writing tells (paraphrases count, not just exact wording).
 - Filler/hedging, banned stock phrases, corporate vocabulary (crucial, delve, robust, leverage, testament, etc.)
