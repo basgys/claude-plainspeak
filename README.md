@@ -39,13 +39,9 @@ To wire it up by hand instead of through `/plugin`: copy `hooks/` to
 
 ## Customising
 
-The rules are one person's taste. Edit `hooks/lib.sh` for the shared word
-lists and patterns, `hooks/style-rules.sh` for the text injected before each
-reply, and `hooks/pr-check.sh` for the PR-specific title and body rules.
+Edit `hooks/lib.sh` and `hooks/style-rules.sh` to ban different words or tailor the plugin to your liking.
 
 ## Under the hood
-
-Shared checks live in `hooks/lib.sh` and run on both surfaces:
 
 - **banned words**: an explicit list, blocking on any occurrence
 - **repeated AI-vocab**: a wider list that flags on the second use, since
@@ -59,18 +55,6 @@ Shared checks live in `hooks/lib.sh` and run on both surfaces:
 - **counted ceilings**: 40 words per sentence, 10 items per flat list, an
   em dash budget, five figures per prose paragraph
 
-`hooks/metrics.py` carries the shapes needing a count or a two-clause test;
-bash regex carries the literal forms. Fenced code is exempt. Blockquotes and
-tables are judged like any other prose.
-
-`pr-check.sh` adds title rules (Conventional Commits, 72-char cap,
-imperative mood, one change per title, no issue ref GitHub already renders)
-and body rules (no "Changes made" section, no test-plan boilerplate, no
-unfalsifiable claims, no all-bullet changelog). Titles too generic to find
-later by search are rejected against [Google's CL-description
-guide](https://google.github.io/eng-practices/review/developer/cl-descriptions.html):
-"Fix bug", "Fix build", "Phase 1", "Add convenience functions".
-
 ## Benchmarks
 
 | result | source |
@@ -80,7 +64,3 @@ guide](https://google.github.io/eng-practices/review/developer/cl-descriptions.h
 | the local checks catch 95% of what two independent judges agree on, at 90% precision | `docs/judge-benchmark.md` |
 | a full check costs ~250ms, against 27-79s for the model judge that was removed | `docs/judge-benchmark.md` |
 | negative parallelism separates AI prose from human kernel commits 83:1 at a 1% false-positive rate | `docs/judge-benchmark.md` |
-
-The honest limit: of the messages that pass every local check, roughly a
-fifth are still consensus violations. They are mostly cognitive-load items,
-because no regex sees a buried finding.
