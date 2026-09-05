@@ -1,7 +1,7 @@
 {
   "name": "plainspeak",
-  "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load (evidence-based: BLUF, SBAR, Minto, Cowan 2001, Federal Plain Language) — free regex first, a stateless Haiku classifier fallback second.",
-  "version": "2.1.0",
+  "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load (evidence-based: BLUF, SBAR, Minto, Cowan 2001, Federal Plain Language) — local regex and metrics on every reply, with a Haiku classifier on PR descriptions only.",
+  "version": "2.2.0",
   "author": {
     "name": "basgys"
   },

@@ -8,7 +8,13 @@
 # matching guard-shell.sh's existing convention in this project.
 set -uo pipefail
 
+# Stays at 3 while the Haiku stage below still runs: here an attempt costs a
+# model call, so the budget is bounded by the verdict, not by the rewrite.
 MAX_ATTEMPTS=3
+NL=$'\n'
+
+# One flag per line, quoting what fired it. See sanity.sh.
+add_hit() { hits="${hits:+$hits$NL}- $1"; }
 
 input=$(cat)
 tool=$(jq -r '.tool_name // ""' <<<"$input")
@@ -66,7 +72,14 @@ block() {
     rm -f "$counter_file"
     exit 0
   fi
-  echo "Blocked (attempt $attempt/$MAX_ATTEMPTS): PR description check failed. $1" >&2
+  cat >&2 <<EOM
+PR description blocked, attempt $attempt of $MAX_ATTEMPTS. Fix every item below, then re-run the command.
+
+FLAGGED:
+$1
+
+HOW TO FIX: edit only the flagged parts of the title and body. Keep everything that was not flagged. Do not mention this check in the PR text.
+EOM
   exit 2
 }
 
@@ -89,48 +102,50 @@ hits=""
 if [ -n "$title" ]; then
   tlen=${#title}
   if ! grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+' <<<"$title"; then
-    hits="${hits:+$hits; }title is not Conventional Commits form (type(scope): description)"
+    add_hit "title is not Conventional Commits form (type(scope): description)"
   fi
   if [ "$tlen" -gt 72 ]; then
-    hits="${hits:+$hits; }title too long ($tlen chars, hard cap 72, target 50)"
+    add_hit "title too long ($tlen chars, hard cap 72, target 50)"
   fi
   if grep -qE '\.\s*$' <<<"$title"; then
-    hits="${hits:+$hits; }title ends with a period"
+    add_hit "title ends with a period"
   fi
   # GitHub already renders the linked issue in the list, sidebar and
   # timeline, so a trailing ref spends title budget on nothing.
   if grep -qE '[-[:space:]:]*[[({]?#[0-9]+[])}]?[[:space:]]*$' <<<"$title"; then
-    hits="${hits:+$hits; }title ends with an issue ref that GitHub already renders (move it to the body as 'Closes #N')"
+    add_hit "title ends with an issue ref that GitHub already renders (move it to the body as 'Closes #N')"
   fi
   # Closing keywords in a title can auto-close issues on merge by accident.
   if grep -qiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' <<<"$title"; then
-    hits="${hits:+$hits; }title contains a GitHub closing keyword (belongs in the body)"
+    add_hit "title contains a GitHub closing keyword (belongs in the body)"
   fi
   # ", and" between clauses means the PR is named after two changes.
   desc="${title#*: }"
   if grep -qE ', and |; ' <<<"$desc"; then
-    hits="${hits:+$hits; }title names two changes (split the PR, or name the primary change only)"
+    add_hit "title names two changes (split the PR, or name the primary change only)"
   fi
   # Google's own bad-description list: a title nobody can find by search.
   if grep -qiE '^(fix|update|add|change|improve|refactor|clean ?up)s? ?(the )?(bug|code|stuff|things?|issues?|tests?|logic)?\s*$' <<<"$desc"; then
-    hits="${hits:+$hits; }title is too generic to find later by search"
+    add_hit "title is too generic to find later by search"
   fi
   # Imperative mood: "add facet counts", never "adding" or "added".
   first_word=$(awk '{print tolower($1)}' <<<"$desc")
   if grep -qE '^(add|fix|updat|remov|delet|chang|creat|implement|refactor|mov|renam|bump|introduc|support)(ing|ed)$' <<<"$first_word"; then
-    hits="${hits:+$hits; }title is not imperative mood ('$first_word' should be the bare verb)"
+    add_hit "title is not imperative mood ('$first_word' should be the bare verb)"
   fi
 fi
 
+# Appends. It used to assign, which silently dropped every title flag found
+# above whenever the body also contained a banned word.
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$body" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
-[ -n "$hard_m" ] && hits="banned words: $hard_m"
+[ -n "$hard_m" ] && add_hit "banned words in the body: $hard_m — delete each one"
 
 soft_all=$(grep -oiE "$SOFT_WORD_PATTERN" <<<"$body" 2>/dev/null | tr '[:upper:]' '[:lower:]')
 soft_count=$(wc -l <<<"$soft_all" | tr -d ' ')
 [ -z "$soft_all" ] && soft_count=0
 if [ "$soft_count" -ge 2 ]; then
   soft_m=$(sort -u <<<"$soft_all" | paste -sd, -)
-  hits="${hits:+$hits; }repeated AI-vocab ($soft_count occurrences: $soft_m)"
+  add_hit "repeated AI-vocab ($soft_count occurrences: $soft_m)"
 fi
 
 # Measured per line, never across newlines: the old splitter fused bullet
@@ -146,25 +161,25 @@ longest_sentence=$(awk '
   END { print max+0 }
 ' <<<"$body")
 if [ "$longest_sentence" -gt 40 ]; then
-  hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
+  add_hit "sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
 fi
 
 max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$body")
 if [ "$max_bullets" -gt 10 ]; then
-  hits="${hits:+$hits; }flat list too long ($max_bullets items — even for sequential reading, consider grouping)"
+  add_hit "flat list too long ($max_bullets items — even for sequential reading, consider grouping)"
 fi
 
 # Filler patterns. Each restates something the reviewer can already see
 # in the diff, which is the one thing Google's guide says a description
 # must never do: the body exists to carry what the diff cannot show.
 if grep -qiE '^#{0,3}[[:space:]]*(changes( made)?|what changed|modifications)[[:space:]]*:?[[:space:]]*$' <<<"$body"; then
-  hits="${hits:+$hits; }'Changes made' section restates the diff"
+  add_hit "'Changes made' section restates the diff"
 fi
 if grep -qiE '^[[:space:]]*[-*][[:space:]]*\[ \][[:space:]]*(tested|test|verified|checked)' <<<"$body"; then
-  hits="${hits:+$hits; }unchecked test-plan boilerplate"
+  add_hit "unchecked test-plan boilerplate"
 fi
 if grep -qiE '\b(improves? (the )?(code )?(maintainability|readability|quality)|better performance|more maintainable|cleaner code|follows best practices|as expected|works fine)\b' <<<"$body"; then
-  hits="${hits:+$hits; }unfalsifiable claim (name the mechanism, or give numbers)"
+  add_hit "unfalsifiable claim (name the mechanism, or give numbers)"
 fi
 
 # Stage 1.5: same structured metrics as the chat check (0.35ms).
@@ -173,14 +188,15 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
   m=$(printf '%s' "$body" | python3 "$METRICS" 2>/dev/null)
   if [ -n "$m" ]; then
     coda=$(jq -r '.coda // 0' <<<"$m" 2>/dev/null || echo 0)
-    coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
+    coda_ex=$(jq -r '[.coda_hits[]? | "\"" + . + "\""] | join("; ")' <<<"$m" 2>/dev/null)
+    neg_ex=$(jq -r '[.neg_parallel_hits[]? | "\"" + . + "\""] | join("; ")' <<<"$m" 2>/dev/null)
     nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
     negflag=$(jq -r '.neg_parallel_flag // false' <<<"$m" 2>/dev/null)
     if [ "$negflag" = "true" ]; then
-      hits="${hits:+$hits; }negative parallelism"
+      add_hit "negative parallelism at: ${neg_ex:-<no fragment captured>} — delete the negated half of each"
     fi
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
-      hits="${hits:+$hits; }significance coda (\"$coda_ex\")"
+      add_hit "significance coda at: $coda_ex — say what follows from it, or cut the clause"
     fi
     # Nominalization is reported by metrics.py and never blocked here: it
     # shows no separation against human kernel commits. See sanity.sh.
@@ -189,7 +205,7 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ -n "$hits" ]; then
-  block "fast checks ($hits). Rewrite, cut the flagged constructions."
+  block "$hits"
 fi
 
 CLASSIFIER_TIMEOUT=90
@@ -298,13 +314,13 @@ cog_val="${verdict##*COGNITIVE_LOAD: }"
 violations=""
 
 if [[ "$struct_val" == VIOLATION:* ]]; then
-  violations="pr-structure: ${struct_val#VIOLATION: }"
+  violations="- pr-structure: ${struct_val#VIOLATION: }"
 fi
 if [[ "$style_val" == VIOLATION:* ]]; then
-  violations="${violations:+$violations; }style: ${style_val#VIOLATION: }"
+  violations="${violations:+$violations$NL}- style: ${style_val#VIOLATION: }"
 fi
 if [[ "$cog_val" == VIOLATION:* ]]; then
-  violations="${violations:+$violations; }cognitive-load: ${cog_val#VIOLATION: }"
+  violations="${violations:+$violations$NL}- cognitive-load: ${cog_val#VIOLATION: }"
 fi
 
 if [ -n "$violations" ]; then

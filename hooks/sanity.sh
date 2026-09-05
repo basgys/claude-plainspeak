@@ -5,17 +5,17 @@
 # (en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing). Stateless — no
 # memory of past turns, not a conversational agent.
 #
-# Stage 1: regex over banned words + known templated phrasings. Free,
-# instant, catches most offenders. If it hits, block immediately.
-# Stage 2: only runs when stage 1 passes clean. A one-shot Haiku classifier
-# (--restricted, so it loads no settings/hooks and can't recursively trigger
-# this hook, while still using normal account auth) whose sole job is
-# spotting sentence-STRUCTURE tells regex can't reliably match (rule-of-
-# three, hollow significance framing, throat-clearing, copula avoidance,
-# paraphrased negative-parallelism). Keeps the common case free while still
-# catching what regex misses.
+# One stage: regex over banned words and templated phrasings, plus
+# metrics.py for the shapes needing a count or a two-clause test. The Haiku
+# classifier that used to run second was removed (see the note at the foot
+# of this file for what that costs in recall).
 #
-# The COGNITIVE_LOAD rubric (both stages) is grounded in evidence-based
+# EVERY check runs before anything blocks. The verdict is the union of all
+# flags, never the first one to fire: a writer told about one violation at
+# a time spends an attempt per rule, which is how a draft that trips three
+# checks exhausts the budget without ever being wrong three times over.
+#
+# The COGNITIVE_LOAD rubric is grounded in evidence-based
 # communication research rather than ad-hoc judgment: BLUF/SBAR/Minto/
 # inverted-pyramid all independently converge on "conclusion first"
 # (buried-lede rule); SBAR's fixed slot order motivates the ask-before-
@@ -29,8 +29,19 @@
 # not the citation.
 set -uo pipefail
 
-MAX_ATTEMPTS=3
+# Raised from 3 once the Haiku stage was removed. A check now costs ~250ms
+# of local CPU, so the budget is set by what a rewrite costs the writer (one
+# more full turn) rather than by what a verdict costs. Three was tight
+# enough that the give-up path fired on drafts that were one flag from
+# clean; five leaves room for a rule the writer has to be told twice.
+MAX_ATTEMPTS=5
 METRICS="$(dirname "$0")/metrics.py"
+NL=$'\n'
+
+# Each flag is its own line, quoting the text that fired it wherever the
+# check can name it. A bare rule name ("templated LLM phrasing") makes the
+# writer guess which sentence it meant, and a guess costs an attempt.
+add_hit() { hits="${hits:+$hits$NL}- $1"; }
 
 input=$(cat)
 session_id=$(jq -r '.session_id // "unknown"' <<<"$input")
@@ -45,7 +56,7 @@ attempt=0
 if [ "$stop_hook_active" = "true" ] && [ -f "$counter_file" ]; then
   attempt=$(cat "$counter_file" 2>/dev/null || echo 0)
 else
-  rm -f "$counter_file"
+  rm -f "$counter_file" "$counter_file.hits"
 fi
 [ -z "$attempt" ] && attempt=0
 
@@ -54,7 +65,7 @@ msg=$(jq -r '.last_assistant_message // empty' <<<"$input")
 
 # A prior attempt already maxed out and gave up — don't re-enter.
 if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
-  rm -f "$counter_file"
+  rm -f "$counter_file" "$counter_file.hits"
   exit 0
 fi
 
@@ -89,13 +100,46 @@ block() {
   if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
     jq -n --arg m "⚠️  KEPT AS-IS ↑ still failing after $MAX_ATTEMPTS attempts, gave up" \
       '{systemMessage: $m}'
-    rm -f "$counter_file"
+    rm -f "$counter_file" "$counter_file.hits"
     exit 0
   fi
+
+  # A rewrite that trips the identical flag again means the writer did not
+  # find the text, or read the flag as a general style note. Saying so is
+  # the difference between a second attempt and a fifth: without it the
+  # same near-miss draft comes back with different wording around the part
+  # that was actually wrong.
+  local repeat=""
+  if [ -f "$counter_file.hits" ] && [ "$(cat "$counter_file.hits")" = "$1" ]; then
+    repeat="These are the SAME flags as the last attempt — the rewrite missed them. Locate the quoted text literally and delete or replace it before changing anything else.$NL$NL"
+  fi
+  printf '%s' "$1" > "$counter_file.hits"
+
+  # The instruction changes shape as attempts climb. Repeating the same
+  # advice louder does not work: a writer on attempt 3 has already tried
+  # its reading of that advice twice. Each tier removes a degree of freedom
+  # instead — first free rewriting, then literal substring edits, then a
+  # hard length cap, which is the one move that kills most flags at once.
+  local howto
+  if [ "$attempt" -le 1 ]; then
+    howto="HOW TO FIX: edit only the flagged constructions. Keep the content, the findings, the code and the structure of everything that was not flagged — a full rewrite usually trips a different rule and burns another attempt."
+  elif [ "$attempt" -eq 2 ]; then
+    howto="HOW TO FIX — MECHANICAL EDIT ONLY. Do not redraft. Copy the previous message and change ONLY the quoted spans above: delete each one, or replace it with the shortest wording that keeps the fact. Every other character stays byte-identical. If a quoted span cannot be deleted without losing a fact, delete the sentence around it and state the fact in five words."
+  else
+    howto="HOW TO FIX — LAST RESORT, CUT IT DOWN. $((attempt)) attempts have failed, so the draft's length is what keeps generating flags. Send the answer in at most three sentences plus, if truly needed, one list of at most four items. Drop every explanation the reader did not ask for. A short blunt answer passes these checks; a polished long one does not."
+  fi
+
+  local reason="Draft blocked, attempt $attempt of $MAX_ATTEMPTS. ${repeat}Fix every item below, then send the whole message again. Each failed attempt leaves the reader another discarded draft to scroll past, so treat this as the last one.
+
+FLAGGED:
+$1
+
+$howto Fenced code is exempt from these checks; blockquotes are not. Do not apologize, do not mention this check, and do not add a note about the rewrite: send the corrected message as if it were the first."
+
   # Stop hooks only honor decision/reason at the TOP level of the output
   # JSON. Nested under hookSpecificOutput they are silently ignored: the
   # systemMessage still prints, but the reply goes through unchanged.
-  jq -n --arg r "$1 (attempt $attempt/$MAX_ATTEMPTS)" \
+  jq -n --arg r "$reason" \
     --arg m "❌ DISCARDED ↑ do not read, rewriting ($attempt/$MAX_ATTEMPTS)" \
     '{decision: "block", reason: $r, systemMessage: $m}'
   exit 0
@@ -107,7 +151,7 @@ pass() {
   if [ "$attempt" -gt 0 ]; then
     jq -n --arg m "✅ FINAL ANSWER ↑ read this one (passed after $attempt rewrite(s))" '{systemMessage: $m}'
   fi
-  rm -f "$counter_file"
+  rm -f "$counter_file" "$counter_file.hits"
   exit 0
 }
 
@@ -174,18 +218,20 @@ NEG_PARALLEL_PATTERN='(,|—|;) *not +(just |only |merely |simply )?[a-z0-9"]|\b
 
 hits=""
 hard_m=$(grep -oiE "$HARD_WORD_PATTERN" <<<"$checktext" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u | paste -sd, -)
-[ -n "$hard_m" ] && hits="banned words: $hard_m"
+[ -n "$hard_m" ] && add_hit "banned words: $hard_m — delete each one; rephrase the sentence without a synonym for it"
 
 soft_all=$(grep -oiE "$SOFT_WORD_PATTERN" <<<"$checktext" 2>/dev/null | tr '[:upper:]' '[:lower:]')
 soft_count=$(wc -l <<<"$soft_all" | tr -d ' ')
 [ -z "$soft_all" ] && soft_count=0
 if [ "$soft_count" -ge 2 ]; then
   soft_m=$(sort -u <<<"$soft_all" | paste -sd, -)
-  hits="${hits:+$hits; }repeated AI-vocab ($soft_count occurrences: $soft_m)"
+  add_hit "repeated AI-vocab, $soft_count occurrences of: $soft_m — one use is fine, so cut all but at most one"
 fi
 
-if grep -qiE "$PHRASE_PATTERN" <<<"$checktext"; then
-  hits="${hits:+$hits; }templated LLM phrasing (not-X-but-Y / throat-clearing / hollow significance)"
+phrase_m=$(grep -oiE "$PHRASE_PATTERN" <<<"$checktext" 2>/dev/null | sort -u | head -3 \
+  | sed 's/^/"/; s/$/"/' | paste -sd'; ' -)
+if [ -n "$phrase_m" ]; then
+  add_hit "templated phrasing (not-X-but-Y / throat-clearing / hollow significance) at: $phrase_m — delete the construction and state the point directly"
 fi
 
 # --- Stage 1.5: structured metrics (stdlib Python, 0.35ms/message) ----
@@ -196,16 +242,24 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
   m=$(printf '%s' "$checktext" | python3 "$METRICS" 2>/dev/null)
   if [ -n "$m" ]; then
     coda=$(jq -r '.coda // 0' <<<"$m" 2>/dev/null || echo 0)
-    coda_ex=$(jq -r '.coda_hits[0] // ""' <<<"$m" 2>/dev/null)
+    # All three examples, never just the first: fixing one and resending
+    # burns an attempt to be told about the next one.
+    coda_ex=$(jq -r '[.coda_hits[]? | "\"" + . + "\""] | join("; ")' <<<"$m" 2>/dev/null)
     nom=$(jq -r '.nominal_per_100w // 0' <<<"$m" 2>/dev/null)
     nom_ex=$(jq -r '.nominal_hits | join(", ")' <<<"$m" 2>/dev/null)
     negflag=$(jq -r '.neg_parallel_flag // false' <<<"$m" 2>/dev/null)
     negn=$(jq -r '.neg_parallel // 0' <<<"$m" 2>/dev/null)
+    neg_ex=$(jq -r '[.neg_parallel_hits[]? | "\"" + . + "\""] | join("; ")' <<<"$m" 2>/dev/null)
     if [ "$negflag" = "true" ]; then
-      hits="${hits:+$hits; }negative parallelism (x$negn): stating what is NOT the case right after stating what is. Delete the negated half; if nothing is lost, cut it"
+      add_hit "negative parallelism (x$negn) at: ${neg_ex:-<no fragment captured>} — each states what is NOT the case right after what is. Delete the negated half of each; keep it only where it corrects a belief the reader holds"
+    fi
+    vague=$(jq -r '.vague_referent // 0' <<<"$m" 2>/dev/null)
+    vague_ex=$(jq -r '[.vague_referent_hits[]? | "\"" + . + "\""] | join("; ")' <<<"$m" 2>/dev/null)
+    if [ "${vague:-0}" -ge 1 ] 2>/dev/null; then
+      add_hit "unnamed referent at: $vague_ex — the sentence says something counts and ends before naming it. Name the thing in that sentence"
     fi
     if [ "${coda:-0}" -ge 1 ] 2>/dev/null; then
-      hits="${hits:+$hits; }significance coda (\"$coda_ex\"): a verbless fragment, then a clause commenting on it. Say what follows from it, or cut the clause"
+      add_hit "significance coda (x$coda) at: $coda_ex — a verbless fragment, then a clause commenting on it. Say what follows from it, or cut the clause"
     fi
     # Nominalization is measured and reported, never blocked. It was the
     # best-replicated metric in the literature (d = 0.9 to 1.35 across two
@@ -220,9 +274,10 @@ if [ -f "$METRICS" ] && command -v python3 >/dev/null 2>&1; then
 fi
 
 # Literal-form coda, kept as a floor under the two-clause test.
-coda_m=$(grep -oiE "$SIGNIFICANCE_CODA_PATTERN" <<<"$checktext" 2>/dev/null | head -3 | paste -sd'; ' -)
+coda_m=$(grep -oiE "$SIGNIFICANCE_CODA_PATTERN" <<<"$checktext" 2>/dev/null | head -3 \
+  | sed 's/^/"/; s/$/"/' | paste -sd'; ' -)
 if [ -n "$coda_m" ]; then
-  hits="${hits:+$hits; }significance coda ($coda_m) — say what follows from it, or cut the clause"
+  add_hit "significance coda at: $coda_m — say what follows from it, or cut the clause"
 fi
 
 # The bash counter that lived here is retired. metrics.py now decides
@@ -237,7 +292,8 @@ word_count=$(wc -w <<<"$checktext" | tr -d ' ')
 emdash_budget=$((word_count / 150))
 [ "$emdash_budget" -lt 3 ] && emdash_budget=3
 if [ "$emdash_count" -gt "$emdash_budget" ]; then
-  hits="${hits:+$hits; }em dash overused ($emdash_count in $word_count words, budget $emdash_budget)"
+  over=$((emdash_count - emdash_budget))
+  add_hit "em dash overused ($emdash_count in $word_count words, budget $emdash_budget) — replace at least $over with a comma, a full stop, or nothing"
 fi
 
 # Federal Plain Language ceiling: ~40 words/sentence. Split on ./!/?/;/:
@@ -251,7 +307,10 @@ fi
 # giant "sentence" (a 4-item list of stats measured 55 words) and blocked
 # every rewrite attempt until the hook gave up. Table rows and list markers
 # are stripped or skipped for the same reason: they are layout, not prose.
-longest_sentence=$(awk '
+# Emits the count and the offending sentence's opening words, tab-separated.
+# Naming the sentence is what makes this fixable in one attempt: on a long
+# reply the writer otherwise has to guess which of thirty sentences ran over.
+longest_out=$(awk '
   { line = $0
     if (line ~ /^[ \t]*[|│┌└├┐┘┤┬┴┼]/) next
     sub(/^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/, "", line)
@@ -259,13 +318,15 @@ longest_sentence=$(awk '
     n = split(line, parts, /[.!?;:]+[ \t]+/)
     for (i = 1; i <= n; i++) {
       c = split(parts[i], w, /[ \t]+/)
-      if (c > max) max = c
+      if (c > max) { max = c; worst = "" ; for (j = 1; j <= 10 && j <= c; j++) worst = worst w[j] " " }
     }
   }
-  END { print max+0 }
+  END { print (max+0) "\t" worst }
 ' <<<"$checktext")
+longest_sentence=${longest_out%%$'\t'*}
+longest_text=${longest_out#*$'\t'}
 if [ "$longest_sentence" -gt 40 ]; then
-  hits="${hits:+$hits; }sentence too long ($longest_sentence words, Federal Plain Language ceiling is ~40)"
+  add_hit "sentence too long ($longest_sentence words, ceiling ~40), starting \"${longest_text}...\" — split it at its first natural break"
 fi
 
 # Cowan (2001) again, applied to figures rather than list items: a prose
@@ -299,7 +360,7 @@ dense_para=$(awk '
   END { flush(); print max+0 }
 ' <<<"$checktext")
 if [ "$dense_para" -gt 5 ]; then
-  hits="${hits:+$hits; }too many figures in one prose paragraph ($dense_para — move them to a list or table, or cut to the ones that carry the argument)"
+  add_hit "too many figures in one prose paragraph ($dense_para) — move them to a list or table, or cut to the ones that carry the argument"
 fi
 # The terminal-state check lived here and was removed. Measured against
 # 3,209 real messages it fired on 17.6% of those over 150 words, and 67%
@@ -319,12 +380,12 @@ fi
 # for sequential reading" ceiling, not Cowan's comfortable number.
 max_bullets=$(awk '/^[-*][ \t]/{c++; if(c>max) max=c; next} {c=0} END{print max+0}' <<<"$checktext")
 if [ "$max_bullets" -gt 10 ]; then
-  hits="${hits:+$hits; }flat list too long ($max_bullets items — even for sequential reading, consider grouping)"
+  add_hit "flat list too long ($max_bullets items) — group them under headings, or cut to the ones that matter"
 fi
 
 if [ -n "$hits" ]; then
   log_verdict fast block "$hits"
-  block "Style [fast checks]: $hits. Cut the flagged constructions, keep it terse. Fenced code is exempt; blockquotes are not."
+  block "$hits"
 fi
 
 # --- No model judge ---------------------------------------------------

@@ -11,9 +11,11 @@ Two Claude Code hooks that gatekeep AI-writing tells and cognitive-load problems
 Two-stage check, both hooks:
 
 1. **Regex pass** (free, instant). A small hard-banned word list blocks on any occurrence; a larger "AI vocabulary" list only flags on repeat use in the same message, since a single ordinary use of a word like "highlight" isn't a violation — the tell is repetition, not presence. Also catches sentence-length (~40 words, splitting on `;` too) and flat-list-length (~10 items) ceilings mechanically. Fenced code is stripped before matching; blockquotes are NOT stripped — testing found that exemption was a full bypass (any leading `>` line dodged both stages, both via deliberate gaming and natural blockquote-formatting habit), so quoted content is now judged like anything else.
-2. **Haiku fallback** (only runs if the regex pass is clean). A stateless, one-shot `claude --restricted --model haiku -p` classification against the axes above, with a confidence split: `VIOLATION` blocks and forces a rewrite, `NOTE` surfaces as a non-blocking message for you to judge yourself. `--restricted` means this sub-invocation loads no settings/hooks, so it can't recursively trigger itself.
+2. **Haiku fallback** — PR hook only; the chat hook's model stage was removed once the local checks reached 95% of what two independent judges agree on. A stateless, one-shot `claude --restricted --model haiku -p` classification against the axes above, with a confidence split: `VIOLATION` blocks and forces a rewrite, `NOTE` surfaces as a non-blocking message for you to judge yourself. `--restricted` means this sub-invocation loads no settings/hooks, so it can't recursively trigger itself.
 
-Both hooks cap retries at 3 attempts, surfacing each attempt via a `systemMessage`, and give up gracefully (letting the message through) rather than looping forever.
+Every check runs before either hook blocks, so one verdict lists all the flags. Each flag quotes the text that fired it, and a rewrite that trips the identical flags again is told so explicitly.
+
+The chat hook allows 5 attempts, the PR hook 3 — an attempt costs a local 250ms there and a model call here. Each attempt is surfaced via a `systemMessage`, and both give up gracefully (letting the message through) rather than looping forever.
 
 Rules are grounded in a CLAUDE.md-style writing-rules doc and evidence-based communication research — edit `hooks/sanity.sh` (chat replies, `Stop` hook) and `hooks/pr-check.sh` (`gh pr create`/`gh pr edit --body`, `PreToolUse`/`Bash` hook) to match your own.
 

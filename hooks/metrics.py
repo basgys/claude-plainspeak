@@ -235,6 +235,24 @@ NEG_PARALLEL = re.compile(
     r"(,|—|;) *not +(just |only |merely |simply )?[a-z0-9\"]|\brather than\b", re.I
 )
 NEG_PARALLEL_LOOSE = re.compile(r"\binstead of\b", re.I)
+# A generic noun called valuable, and the sentence ends before it is named:
+# "found a real cost worth removing", "one thing worth watching." The reader
+# is told something counts and has to read on to learn what. The writing
+# rules already ban the promise-without-delivery form; this is the same
+# defect with an unnamed subject.
+#
+# A colon, dash or that-clause after the phrase means the naming follows
+# immediately, so only the sentence-terminated form is matched. Measured
+# against 3,615 real messages: 0.08% hit rate, every hit a true positive.
+# The unrestricted "worth <verb>ing" fires on 9.2% and is mostly legitimate
+# ("worth checking after this deploys"), so the generic-noun list carries
+# the discrimination.
+VAGUE_REFERENT = re.compile(
+    r"\b(something|anything|one thing|a few things|(?:a|an|one) "
+    r"(?:real |genuine |serious )?(?:cost|issue|problem|gap|win|thing|change|"
+    r"point)s?) worth [a-z]+ing\s*[.!?]",
+    re.I,
+)
 TERMINAL_STATE = re.compile(
     r"\?|\b(done|blocked|waiting|awaiting|next step|say go|want me to|shall i|"
     r"should i|let me know|nothing (changed|to do)|no changes|ready|pushed|"
@@ -245,6 +263,23 @@ QUANTITY = re.compile(
     r"^[0-9][0-9,]*(\.[0-9]+)?(h[0-9]+m|m[0-9]+s|[hmsd]|%|x|GB|MB|KB|ms)?$"
 )
 TRICOLON = re.compile(r"\b\w+, \w+,? and \w+\b")
+
+
+def with_context(pattern, text, limit=3, pad=40):
+    """Matched spans plus surrounding words, for the block message.
+
+    A count alone ("negative parallelism (x2)") makes the writer hunt for
+    what fired, and the usual result is a blind full rewrite that trips a
+    different rule. Quoting the span makes the fix mechanical.
+    """
+    out = []
+    for m in pattern.finditer(text):
+        start, end = max(0, m.start() - pad), min(len(text), m.end() + pad)
+        frag = " ".join(text[start:end].split())
+        out.append(("..." if start else "") + frag + ("..." if end < len(text) else ""))
+        if len(out) >= limit:
+            break
+    return out
 
 
 def figures_per_paragraph(text):
@@ -302,10 +337,14 @@ def compute(raw):
         "has_terminal_state": bool(TERMINAL_STATE.search(tail)),
         "neg_parallel": len(NEG_PARALLEL.findall(text)),
         "neg_parallel_loose": len(NEG_PARALLEL_LOOSE.findall(text)),
+        "neg_parallel_hits": (with_context(NEG_PARALLEL, text)
+                              or with_context(NEG_PARALLEL_LOOSE, text)),
         "neg_parallel_flag": (len(NEG_PARALLEL.findall(text)) >= 1
                               or len(NEG_PARALLEL.findall(text))
                                  + len(NEG_PARALLEL_LOOSE.findall(text)) >= 2),
         # new, published support
+        "vague_referent": len(VAGUE_REFERENT.findall(text)),
+        "vague_referent_hits": with_context(VAGUE_REFERENT, text, pad=20),
         "coda": len(coda_hits),
         "coda_hits": coda_hits[:3],
         "nominal_per_100w": round(len(nom) / n * 100, 3),
