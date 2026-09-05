@@ -2,3 +2,6 @@
 *.jsonl
 corpus*.json
 sample*.json
+
+# research scrape cache
+.firecrawl/

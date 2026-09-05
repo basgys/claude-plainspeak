@@ -3,7 +3,7 @@
 
 Reads every Claude Code transcript under ~/.claude/projects, keeps
 assistant text blocks of 15+ words, and strips fenced code the same way
-hooks/sanity.sh does. See docs/judge-benchmark.md.
+hooks/lib.sh does. See docs/judge-benchmark.md.
 
 Usage: tools/mine.py corpus.json
 """

@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
-"""Stage 1.5: structured metrics over one message, stdlib only.
+"""Structured metrics over one message, stdlib only.
 
-Reads text on stdin, writes one JSON object on stdout. Measured at 58ms
-cold against 27-79s for the Haiku stage, so anything decidable here should
-never reach the model.
+Reads text on stdin, writes one JSON object on stdout. Catches the shapes
+that need a count or a two-clause test, which the bash regexes in lib.sh
+cannot do. Measured at 58ms cold.
 
-Every metric below is either already enforced by the bash hook or carries
-published support. Three that folklore recommends are deliberately absent,
-because the peer-reviewed direction is the opposite of the folk claim:
+Three metrics folklore recommends are deliberately absent, because the
+peer-reviewed direction is the opposite of the folk claim:
 
   hedging density      humans hedge MORE than LLMs (Herbold et al.,
                        Scientific Reports 13:18617, d = 1.0 to 1.5)
   discourse markers    humans use more, or no significant difference (same)
   type-token ratio     direction flips between GPT-3.5 and GPT-4, and raw
                        TTR correlates with message length at -0.70 on this
-                       corpus. MTLD is used instead (-0.017).
+                       corpus
 
-The standing risk: Liang et al., Patterns 4(7):100779, found detectors
-misclassified 61% of non-native human essays as AI, driven by low
-linguistic variability. Terse technical writing sits in that failure mode,
-so variance metrics here are reported and never thresholded.
+Liang et al., Patterns 4(7):100779, found detectors misclassified 61% of
+non-native human essays as AI, driven by low linguistic variability. Terse
+technical writing sits in that failure mode, so nothing here thresholds on
+variance.
 """
 
 import json
 import re
-import statistics as st
 import sys
 
 # --- text preparation -------------------------------------------------
@@ -38,7 +36,7 @@ URL = re.compile(r"https?://\S+")
 
 
 def strip_code(text):
-    """Fenced code is never prose. Matches the bash hook's behaviour."""
+    """Fenced code is never prose. Matches lib.sh's behaviour."""
     out, infence = [], False
     for line in text.split("\n"):
         if FENCE.match(line):
@@ -136,45 +134,48 @@ def is_coda(sentence):
     return True
 
 
-# --- lexical diversity ------------------------------------------------
-# MTLD, McCarthy & Jarvis, Behavior Research Methods 42(2):381-92 (2010).
-# Chosen over TTR because TTR is mostly a function of length: measured
-# corr(length, TTR) = -0.70 against corr(length, MTLD) = -0.017.
+# --- negative parallelism ---------------------------------------------
+# Two tiers, measured against 262 messages where two independent judges
+# agreed. A single strict hit flags; the looser "instead of" form needs a
+# second hit to join it.
+#
+# The strict form alone at 2+ scored precision 99%, recall 68%. At 1+ it
+# scores 96% / 87%. Since 17 of the 20 violations that only the model judge
+# caught were single-occurrence negative parallelism, recall matters more
+# here than the last point of precision. End to end the local checks go from
+# 89% to 95% recall at 90% precision, and human false positives on kernel
+# commits rise from 4.8% to 7.3%.
+NEG_PARALLEL = re.compile(
+    r"(,|—|;) *not +(just |only |merely |simply )?[a-z0-9\"]|\brather than\b", re.I
+)
+NEG_PARALLEL_LOOSE = re.compile(r"\binstead of\b", re.I)
 
-MTLD_THRESHOLD = 0.72
-
-
-def _mtld_pass(tokens):
-    factors, types, count = 0.0, set(), 0
-    for tok in tokens:
-        types.add(tok)
-        count += 1
-        if count > 0 and len(types) / count <= MTLD_THRESHOLD:
-            factors += 1
-            types, count = set(), 0
-    if count > 0:
-        ttr = len(types) / count
-        factors += (1 - ttr) / (1 - MTLD_THRESHOLD) if ttr < 1 else 0
-    return len(tokens) / factors if factors else float(len(tokens))
-
-
-def mtld(tokens):
-    if len(tokens) < 10:
-        return 0.0
-    low = [t.lower() for t in tokens]
-    return (_mtld_pass(low) + _mtld_pass(low[::-1])) / 2
-
+# A generic noun called valuable, and the sentence ends before it is named:
+# "found a real cost worth removing", "one thing worth watching." The reader
+# is told something counts and has to read on to learn what.
+#
+# A colon, dash or that-clause after the phrase means the naming follows
+# immediately, so only the sentence-terminated form is matched. Measured
+# against 3,615 real messages: 0.08% hit rate, every hit a true positive.
+# The unrestricted "worth <verb>ing" fires on 9.2% and is mostly legitimate
+# ("worth checking after this deploys"), so the generic-noun list carries
+# the discrimination.
+VAGUE_REFERENT = re.compile(
+    r"\b(something|anything|one thing|a few things|(?:a|an|one) "
+    r"(?:real |genuine |serious )?(?:cost|issue|problem|gap|win|thing|change|"
+    r"point)s?) worth [a-z]+ing\s*[.!?]",
+    re.I,
+)
 
 # --- nominalization ---------------------------------------------------
-# The best-replicated metric in the survey. Reinhart et al., arXiv:2410.16107
-# report LLMs at 1.5-2x the human rate (GPT-4o d = 1.23); Herbold et al.,
-# Scientific Reports 13:18617, corroborate on an independent corpus
-# (d = 0.88 to 1.35). Biber's tagger identifies these by suffix, so the
-# suffix count IS the published operationalization.
-#
-# The stop-list is the part no paper provides. Software English is
-# congenitally nominalized, and a raw count cannot tell `serialization`
-# (a real thing) from `the utilization of` (a verb in hiding).
+# Reported for the benchmark tooling, never blocked on. It was the
+# best-replicated metric in the literature (Reinhart et al.,
+# arXiv:2410.16107, GPT-4o d = 1.23; Herbold et al. corroborating at
+# d = 0.88 to 1.35) and it does not survive contact with this corpus:
+# against 20,000 pre-ChatGPT Linux kernel commit bodies it fires on 3.9% of
+# human prose against 4.8% here. Software English is congenitally
+# nominalized and the published effect was measured on academic prose, so
+# the register is wrong.
 NOMINAL = re.compile(r"\b[a-z]{4,}(tion|tions|ment|ments|ness|ity|ities|ance|ence)\b", re.I)
 NOMINAL_STOP = {
     "application", "applications", "authentication", "authorization",
@@ -196,73 +197,9 @@ NOMINAL_STOP = {
     "version", "versions", "visibility",
 }
 
-
-def nominalizations(tokens):
-    hits = [t for t in tokens if NOMINAL.fullmatch(t) and t.lower() not in NOMINAL_STOP]
-    return hits
-
-
-# --- rare style verbs -------------------------------------------------
-# Kobak et al., Science Advances 11(27):eadt3813 (2025), and Juzek & Ward,
-# COLING 2025 (arXiv:2412.11385). Restricted to the rare tail: Kobak's
-# "common set" (across, additionally, comprehensive, crucial, within, ...)
-# is ordinary engineering English and must never be matched.
-#
-# These lists decay. arXiv:2502.09606 documents authors editing `delve` out
-# once it was publicized, so treat a miss here as expected, never as proof.
-RARE_STYLE = re.compile(
-    r"\b(delve[sd]?|delving|underscore[sd]?|underscoring|showcas(e|es|ed|ing)|"
-    r"intricate|intricacies|garner(ed|s|ing)?|realm|myriad|pivotal|"
-    r"testament|tapestry|multifaceted|noteworthy|paramount|burgeoning|"
-    r"unwavering|meticulous(ly)?|seamless(ly)?|holistic|nuanced|"
-    r"leverag(e|es|ed|ing)|utiliz(e|es|ed|ing)|foster(ing|s|ed)?)\b",
-    re.I,
-)
-
-# --- other counted forms already enforced in bash ---------------------
-
-# Two tiers, measured against 262 messages where two independent judges
-# agreed. A single strict hit blocks; the looser "instead of" form needs a
-# second hit to join it.
-#
-# The strict form alone at 2+ scored precision 99%, recall 68%. At 1+ it
-# scores 96% / 87%. Since 17 of the 20 violations that only the model judge
-# caught were single-occurrence negative parallelism, the recall matters
-# more here than the last point of precision. End to end the fast checks go
-# from 89% to 95% recall, at 90% precision, and human false positives on
-# kernel commits rise from 4.8% to 7.3%.
-NEG_PARALLEL = re.compile(
-    r"(,|—|;) *not +(just |only |merely |simply )?[a-z0-9\"]|\brather than\b", re.I
-)
-NEG_PARALLEL_LOOSE = re.compile(r"\binstead of\b", re.I)
-# A generic noun called valuable, and the sentence ends before it is named:
-# "found a real cost worth removing", "one thing worth watching." The reader
-# is told something counts and has to read on to learn what. The writing
-# rules already ban the promise-without-delivery form; this is the same
-# defect with an unnamed subject.
-#
-# A colon, dash or that-clause after the phrase means the naming follows
-# immediately, so only the sentence-terminated form is matched. Measured
-# against 3,615 real messages: 0.08% hit rate, every hit a true positive.
-# The unrestricted "worth <verb>ing" fires on 9.2% and is mostly legitimate
-# ("worth checking after this deploys"), so the generic-noun list carries
-# the discrimination.
-VAGUE_REFERENT = re.compile(
-    r"\b(something|anything|one thing|a few things|(?:a|an|one) "
-    r"(?:real |genuine |serious )?(?:cost|issue|problem|gap|win|thing|change|"
-    r"point)s?) worth [a-z]+ing\s*[.!?]",
-    re.I,
-)
-TERMINAL_STATE = re.compile(
-    r"\?|\b(done|blocked|waiting|awaiting|next step|say go|want me to|shall i|"
-    r"should i|let me know|nothing (changed|to do)|no changes|ready|pushed|"
-    r"committed|needs? (a )?(decision|input|your)|unchanged|stopped|left as-is)\b",
-    re.I,
-)
 QUANTITY = re.compile(
     r"^[0-9][0-9,]*(\.[0-9]+)?(h[0-9]+m|m[0-9]+s|[hmsd]|%|x|GB|MB|KB|ms)?$"
 )
-TRICOLON = re.compile(r"\b\w+, \w+,? and \w+\b")
 
 
 def with_context(pattern, text, limit=3, pad=40):
@@ -284,6 +221,7 @@ def with_context(pattern, text, limit=3, pad=40):
 
 def figures_per_paragraph(text):
     worst, para = 0, []
+
     def flush():
         nonlocal worst
         if not para:
@@ -292,6 +230,7 @@ def figures_per_paragraph(text):
         c = sum(1 for t in joined.split() if QUANTITY.match(t.strip("([,;:.)]")))
         worst = max(worst, c)
         para.clear()
+
     for line in text.split("\n"):
         if not line.strip() or TABLE.match(line) or LIST.match(line):
             flush()
@@ -301,61 +240,31 @@ def figures_per_paragraph(text):
     return worst
 
 
-# --- main -------------------------------------------------------------
-
-
 def compute(raw):
     text = strip_code(raw)
     toks = words(text)
     n = len(toks) or 1
-    sents = sentences(text)
-    lens = [len(s.split()) for s in sents] or [0]
-    prose = "\n".join(prose_lines(text))
+    lens = [len(s.split()) for s in sentences(text)] or [0]
+    nom = [t for t in toks if NOMINAL.fullmatch(t) and t.lower() not in NOMINAL_STOP]
 
-    nom = nominalizations(toks)
-    coda_hits = [s for s in sents if is_coda(s)]
-    rare = RARE_STYLE.findall(text)
-    tail = text.strip().split("\n\n")[-1] if text.strip() else ""
-
-    flat_list, worst_list = 0, 0
-    for line in text.split("\n"):
-        if LIST.match(line):
-            flat_list += 1
-            worst_list = max(worst_list, flat_list)
-        else:
-            flat_list = 0
+    strict = len(NEG_PARALLEL.findall(text))
+    loose = len(NEG_PARALLEL_LOOSE.findall(text))
+    coda_hits = [s for s in sentences(text) if is_coda(s)]
 
     return {
         "words": len(toks),
-        "sentences": len(sents),
-        # enforced today
         "emdash": text.count("—"),
-        "emdash_per_150w": round(text.count("—") / n * 150, 3),
         "longest_sentence": max(lens),
-        "longest_flat_list": worst_list,
-        "figures_per_paragraph": figures_per_paragraph(prose),
-        "has_terminal_state": bool(TERMINAL_STATE.search(tail)),
-        "neg_parallel": len(NEG_PARALLEL.findall(text)),
-        "neg_parallel_loose": len(NEG_PARALLEL_LOOSE.findall(text)),
+        "figures_per_paragraph": figures_per_paragraph("\n".join(prose_lines(text))),
+        "neg_parallel": strict,
+        "neg_parallel_flag": strict >= 1 or strict + loose >= 2,
         "neg_parallel_hits": (with_context(NEG_PARALLEL, text)
                               or with_context(NEG_PARALLEL_LOOSE, text)),
-        "neg_parallel_flag": (len(NEG_PARALLEL.findall(text)) >= 1
-                              or len(NEG_PARALLEL.findall(text))
-                                 + len(NEG_PARALLEL_LOOSE.findall(text)) >= 2),
-        # new, published support
         "vague_referent": len(VAGUE_REFERENT.findall(text)),
         "vague_referent_hits": with_context(VAGUE_REFERENT, text, pad=20),
         "coda": len(coda_hits),
         "coda_hits": coda_hits[:3],
         "nominal_per_100w": round(len(nom) / n * 100, 3),
-        "nominal_hits": sorted({t.lower() for t in nom})[:5],
-        "mtld": round(mtld(toks), 1),
-        "rare_style": len(rare),
-        # reported, never thresholded (Liang et al. failure mode)
-        "sentence_len_cv": round(st.pstdev(lens) / (st.mean(lens) or 1), 3)
-        if len(lens) > 1
-        else 0.0,
-        "tricolon": len(TRICOLON.findall(text)),
     }
 
 

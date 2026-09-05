@@ -1,7 +1,7 @@
 # Judge benchmark
 
 Which model should judge writing quality, and whether a model is needed
-at all. The Stop hook now answers the second question with no; see Status.
+at all. Both hooks now answer the second question with no; see Status.
 
 ## Results
 
@@ -62,9 +62,9 @@ or the privacy tradeoff changes.
 
 ## Status
 
-The Stop hook no longer calls a model. Once the Python metrics absorbed
+Neither hook calls a model. Once the Python metrics absorbed
 negative parallelism they caught 95% of what the two judges agree on, at
-90% precision, in 300ms rather than 27-79 seconds.
+90% precision, in ~250ms rather than 27-79 seconds.
 
 Cost of the removal, on the same 300 labelled messages: of the 80 that
 pass every fast check, 16 are still consensus violations, so about a fifth
@@ -74,8 +74,10 @@ cognitive-load items no regex sees.
 `judge/rubric.txt` keeps the rubric, so this protocol still runs and the
 model judge can be reinstated by measurement.
 
-`hooks/pr-check.sh` still calls a model. It fires on `gh pr create` only,
-so the wait is once per PR instead of once per turn.
+`hooks/pr-check.sh` dropped its classifier too. The judgments it made and
+no regex replaces: whether the body length suits the diff, whether the
+approach's shortcomings are named, whether the reasoning survives a dead
+link. Its mechanizable rules moved into the local checks.
 
 ## Protocol
 

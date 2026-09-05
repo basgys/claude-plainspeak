@@ -1,48 +1,124 @@
 # plainspeak
 
-Two Claude Code hooks that gatekeep AI-writing tells and cognitive-load problems before they reach you — in chat replies, and in PR descriptions.
+Assistant replies come back padded. You have probably scrolled past these in
+your own transcripts:
 
-- **style** — mechanical AI-writing tells: banned vocabulary, templated phrasing, rule-of-three filler, hollow significance framing, copula avoidance, hidden-verb nominalization
-- **cognitive_load** — six general principles (point first, context before ask, clean structure, say only what's warranted, respect working-memory limits, unambiguous terminal state), grounded in BLUF, SBAR, the Minto Pyramid Principle, Cowan (2001) on working memory, and the Federal Plain Language Guidelines
-- **pr_structure** (PR hook only) — prose not bullets, motivation before implementation, no test-plan section unless asked, treats the PR as one unit
+```
+It's not a config problem, it's a caching problem.   (nobody raised config)
+Great question! Let me delve into the nuances here.
+This underscores the importance of a robust approach.
+...and the answer, four paragraphs down, in a 55-word sentence.
+```
 
-## How it works
-
-Two-stage check, both hooks:
-
-1. **Regex pass** (free, instant). A small hard-banned word list blocks on any occurrence; a larger "AI vocabulary" list only flags on repeat use in the same message, since a single ordinary use of a word like "highlight" isn't a violation — the tell is repetition, not presence. Also catches sentence-length (~40 words, splitting on `;` too) and flat-list-length (~10 items) ceilings mechanically. Fenced code is stripped before matching; blockquotes are NOT stripped — testing found that exemption was a full bypass (any leading `>` line dodged both stages, both via deliberate gaming and natural blockquote-formatting habit), so quoted content is now judged like anything else.
-2. **Haiku fallback** — PR hook only; the chat hook's model stage was removed once the local checks reached 95% of what two independent judges agree on. A stateless, one-shot `claude --restricted --model haiku -p` classification against the axes above, with a confidence split: `VIOLATION` blocks and forces a rewrite, `NOTE` surfaces as a non-blocking message for you to judge yourself. `--restricted` means this sub-invocation loads no settings/hooks, so it can't recursively trigger itself.
-
-Every check runs before either hook blocks, so one verdict lists all the flags. Each flag quotes the text that fired it, and a rewrite that trips the identical flags again is told so explicitly.
-
-The chat hook allows 5 attempts, the PR hook 3 — an attempt costs a local 250ms there and a model call here. Each attempt is surfaced via a `systemMessage`, and both give up gracefully (letting the message through) rather than looping forever.
-
-Rules are grounded in a CLAUDE.md-style writing-rules doc and evidence-based communication research — edit `hooks/sanity.sh` (chat replies, `Stop` hook) and `hooks/pr-check.sh` (`gh pr create`/`gh pr edit --body`, `PreToolUse`/`Bash` hook) to match your own.
-
-## Install
-
-As a plugin (recommended):
+plainspeak is a Claude Code plugin that keeps them out of your chat replies
+and PR descriptions. It sends the writing rules ahead of every reply so the
+first draft passes, then reads the finished reply and blocks it for a rewrite
+when it does not, quoting the exact text that failed. It does the same to a
+PR title and body before `gh pr create` runs. Every check is local and takes
+about 250ms.
 
 ```
 /plugin marketplace add basgys/claude-plainspeak
 /plugin install plainspeak@claude-plainspeak
 ```
 
-Or manually: copy both scripts under `hooks/` to `~/.claude/hooks/`, `chmod +x` them, and merge this into `~/.claude/settings.json`:
+## The three hooks
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/sanity.sh", "timeout": 30 } ] }
-    ],
-    "PreToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "~/.claude/hooks/pr-check.sh", "timeout": 30 } ] }
-    ]
-  }
-}
-```
+| hook | event | what it does |
+|---|---|---|
+| `style-rules.sh` | `UserPromptSubmit` | injects the writing rules before the reply is drafted |
+| `sanity.sh` | `Stop` | checks the finished reply, blocks and asks for a rewrite |
+| `pr-check.sh` | `PreToolUse`/`Bash` | checks `gh pr` titles and bodies before the command runs |
+
+A hook cannot retract a message already displayed, so every block leaves a
+discarded draft in the transcript. That is why the rules go out first.
+
+## What gets checked
+
+Shared checks live in `hooks/lib.sh` and run on both surfaces:
+
+- **banned words**: an explicit list, blocking on any occurrence
+- **repeated AI-vocab**: a wider list that flags on the second use, since
+  one "showcase" is ordinary and repetition is the tell
+- **templated phrasing**: not-X-but-Y, throat-clearing, hollow significance
+- **negative parallelism**: stating what is untrue right after what is
+- **significance coda**: a verbless fragment, then a clause whose only job
+  is to say the fragment was important
+- **unnamed referent**: a sentence that says something is valuable and ends
+  before naming it
+- **counted ceilings**: 40 words per sentence, 10 items per flat list, an
+  em dash budget, five figures per prose paragraph
+
+`hooks/metrics.py` carries the shapes needing a count or a two-clause test;
+bash regex carries the literal forms. Fenced code is exempt. Blockquotes and
+tables are judged like any other prose.
+
+`pr-check.sh` adds title rules (Conventional Commits, 72-char cap,
+imperative mood, one change per title, no issue ref GitHub already renders)
+and body rules (no "Changes made" section, no test-plan boilerplate, no
+unfalsifiable claims, no all-bullet changelog). Titles too generic to find
+later by search are rejected against [Google's CL-description
+guide](https://google.github.io/eng-practices/review/developer/cl-descriptions.html):
+"Fix bug", "Fix build", "Phase 1", "Add convenience functions".
+
+## The rewrite loop
+
+Every check runs before either hook blocks, so one verdict lists every flag.
+Telling a writer about one violation at a time spends an attempt per rule.
+
+Each flag quotes the text that fired it. A rewrite tripping the identical
+flag is told so, and the instructions tighten as attempts climb: free
+editing, then literal substring edits only, then a hard length cap.
+
+Both hooks allow 5 attempts, then give up and let the message through. Each
+attempt prints a `systemMessage` under the draft it judged, so you scroll
+for the green tick and read only that one.
+
+## What was measured
+
+| result | source |
+|---|---|
+| framing the rules as an accessibility requirement cut the block rate from 48% to 34% (p=0.004) | `docs/prompt-framing.md` |
+| threatening the model moved nothing: 47% against 48%, p=0.89 | `docs/prompt-framing.md` |
+| the local checks catch 95% of what two independent judges agree on, at 90% precision | `docs/judge-benchmark.md` |
+| a full check costs ~250ms, against 27-79s for the model judge that was removed | `docs/judge-benchmark.md` |
+| negative parallelism separates AI prose from human kernel commits 83:1 at a 1% false-positive rate | `docs/judge-benchmark.md` |
+
+The honest limit: of the messages that pass every local check, roughly a
+fifth are still consensus violations. They are mostly cognitive-load items,
+because no regex sees a buried finding.
 
 ## Requirements
 
-`claude` CLI on PATH, `jq`, standard POSIX `grep`/`awk`. `pr-check.sh` also needs `shasum`.
+- `jq`, POSIX `grep`/`awk`/`sed`
+- `python3`, for `hooks/metrics.py`
+- `shasum`, used by `pr-check.sh` only
+
+`lib.sh` silently skips the Python stage when `python3` is missing. The bash
+checks still run. These three are lost:
+
+- negative parallelism
+- the significance-coda two-clause test
+- the unnamed-referent check
+
+Negative parallelism is the strongest check in the suite, so install
+`python3`.
+
+To wire it up by hand instead of through `/plugin`: copy `hooks/` to
+`~/.claude/hooks/`, `chmod +x` the scripts, and merge `hooks/hooks.json` into
+`~/.claude/settings.json` with `${CLAUDE_PLUGIN_ROOT}` replaced by
+`~/.claude`.
+
+## Customising
+
+The rules are one person's taste. Edit `hooks/lib.sh` for the shared word
+lists and patterns, `hooks/style-rules.sh` for the text injected before each
+reply, and `hooks/pr-check.sh` for the PR-specific title and body rules.
+
+## Research tooling
+
+`tools/` and `judge/rubric.txt` reproduce the numbers in `docs/`. `mine.py`
+extracts a corpus from local transcripts, `sample.py` draws a stratified
+sample, `redact.py` strips identifiers before anything leaves the machine,
+and `label.sh` / `judge_openai.sh` run the two judges. None of it runs at
+runtime.

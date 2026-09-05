@@ -1,7 +1,7 @@
 {
   "name": "plainspeak",
-  "description": "Gatekeeps assistant replies and PR descriptions on writing style and cognitive load (evidence-based: BLUF, SBAR, Minto, Cowan 2001, Federal Plain Language) — local regex and metrics on every reply, with a Haiku classifier on PR descriptions only.",
-  "version": "2.2.0",
+  "description": "Blocks AI-writing tells and cognitive-load problems in chat replies and PR descriptions. Injects writing rules before each reply, then checks the finished reply and any PR title and body. Runs entirely locally.",
+  "version": "3.0.0",
   "author": {
     "name": "basgys"
   },

@@ -5,7 +5,7 @@
 # rather than where the writing is bad, and those are the cases worth a
 # human adjudication.
 #
-# Runs the same rubric sanity.sh uses, extracted at runtime so the two
+# Runs judge/rubric.txt, the same rubric tools/label.sh uses, so both
 # judges are answering the same question.
 #
 # Input must already be redacted (tools/redact.py). This sends text off

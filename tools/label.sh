@@ -1,8 +1,6 @@
 #!/bin/bash
-# Replays a corpus through the SAME stage 2 prompt sanity.sh uses, to build
-# the label set the cascade needs. The prompt is extracted from sanity.sh
-# at runtime rather than copied, so the labels can never drift from what
-# the hook actually enforces.
+# Replays a corpus through judge/rubric.txt to build a label set the local
+# checks can be measured against. See docs/judge-benchmark.md.
 #
 # There is no API key on this machine (auth is claude.ai), so the Message
 # Batches API and its 50% discount are unavailable. This runs `claude -p`
@@ -19,7 +17,6 @@ PAR="${4:-12}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 METRICS="$ROOT/hooks/metrics.py"
 
-# Pull the rubric out of sanity.sh, between `-p "` and the TEXT: marker.
 # The rubric lives in judge/rubric.txt since the Stop hook stopped calling
 # a model. Reading it here keeps docs/judge-benchmark.md reproducible.
 PROMPT=$(cat "$ROOT/judge/rubric.txt")
